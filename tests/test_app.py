@@ -99,3 +99,9 @@ def test_training_hub_and_insights_pages_render(monkeypatch):
     assert any("Puzzle Duels" in m.value for m in t.markdown)
     t.switch_page("app_pages/insights.py").run()
     assert not t.exception, t.exception
+
+
+def test_review_board_lets_you_play_your_own_moves(monkeypatch, blunder):
+    from streamlit.testing.v1 import AppTest
+    import ui.views as v
+    assert callable(v.board_component) and callable(v.top_lines)

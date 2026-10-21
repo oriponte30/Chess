@@ -8,6 +8,7 @@ from core import lessons, service
 from ui import views
 from ui.board import board_svg
 from ui.chessboard import board_component
+from ui.enginelines import arrows as engine_arrows, panel_html, top_lines
 
 ss = st.session_state
 TREE = lessons.CARO_KANN
@@ -64,26 +65,6 @@ def own_move():
     ss["lesson_own"] = "—"
 
 
-@st.cache_data(show_spinner=False, max_entries=1024)
-def top_lines(fen: str, depth: int = 12, n: int = 3) -> list:
-    """Stockfish's best lines for a position: [{eval, tone, line, first}] (evaluation from White's point of view)."""
-    board = chess.Board(fen)
-    out = []
-    for L in service.make_engine().analyse(board, depth, n):
-        if L.mate is not None:
-            ev = f"M{abs(L.mate)}" if L.mate > 0 else f"-M{abs(L.mate)}"
-        else:
-            ev = f"{L.cp / 100:+.2f}"
-        b, parts = board.copy(), []
-        for i, mv in enumerate(L.pv[:6]):
-            no = f"{b.fullmove_number}." if b.turn == chess.WHITE else (f"{b.fullmove_number}..." if i == 0 else "")
-            parts.append(f"{no}{b.san(mv)}".strip())
-            b.push(mv)
-        out.append({"eval": ev, "tone": "pos" if (L.cp > 25 and L.mate is None) or (L.mate or 0) > 0 else "neg" if (L.cp < -25 and L.mate is None) or (L.mate or 0) < 0 else "",
-                    "line": " ".join(parts), "first": L.pv[0].uci() if L.pv else ""})
-    return out
-
-
 def _slide(path: list):
     """Animate the move just played (or undone), when the path changed by exactly one move since the last drawing."""
     prev = ss.get("_lesson_shown")
@@ -123,8 +104,7 @@ def lesson():
             engine_error = str(e)
     with left:
         last = board.peek().uci() if board.move_stack else None
-        arrow = top[0]["first"] if top else None
-        more = [(t["first"], c) for t, c in zip(top[1:], ("#e0a82ecc", "#d9534fcc")) if t["first"]]     # 2nd and 3rd choice in other colours
+        arrow, more = engine_arrows(top)
         svg = board_svg(board.fen(), last, arrow, flipped, None, slide=_slide(path), extra_arrows=more)
         svg = svg.replace('width="520" height="520"', 'style="width:100%;height:auto"')
         made = board_component("lesson_board", board.fen(), f"<div class='boardwrap'>{svg}</div>", flipped)
@@ -199,8 +179,7 @@ def lesson():
         if show_engine:
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
             if top:
-                rows = "".join(f"<div class='eng'><div class='ev {t['tone']}'>{t['eval']}</div><div class='ln'>{t['line']}</div></div>" for t in top)
-                st.markdown(f"<div class='card exp'><h4>Top engine moves (Stockfish)</h4>{rows}</div>", unsafe_allow_html=True)
+                st.markdown(panel_html(top), unsafe_allow_html=True)
             elif engine_error:
                 st.warning(engine_error)
             elif board.is_game_over():

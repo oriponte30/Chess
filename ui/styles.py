@@ -81,8 +81,11 @@ div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient
 @keyframes barfill { from { transform: scaleY(.0); opacity:.4 } to { transform: scaleY(1); opacity:1 } }
 .boardwrap { background: var(--surface); border:1px solid var(--line); border-radius: var(--radius); padding: 14px; }
 .boardwrap svg { border-radius: 10px; display:block; }
-@keyframes pieceslide { from { transform: translate(var(--fx), var(--fy)); } to { transform: translate(var(--tx), var(--ty)); } }
-.pslide { animation: pieceslide .34s cubic-bezier(.25,1,.5,1) both; }
+@keyframes pieceslide { 0% { transform: translate(var(--fx), var(--fy)) scale(1); filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+  45% { transform: translate(calc(var(--fx) + (var(--tx) - var(--fx)) * .8), calc(var(--fy) + (var(--ty) - var(--fy)) * .8)) scale(1.22); filter: drop-shadow(0 5px 4px rgba(0,0,0,.4)); }
+  75% { transform: translate(var(--tx), var(--ty)) scale(.95); filter: drop-shadow(0 1px 1px rgba(0,0,0,.2)); }
+  100% { transform: translate(var(--tx), var(--ty)) scale(1); filter: drop-shadow(0 0 0 rgba(0,0,0,0)); } }
+.pslide { animation: pieceslide .42s cubic-bezier(.22,1,.36,1) both; transform-box: fill-box; transform-origin: center; }
 @keyframes pop { from { transform: scale(.6); opacity:0 } to { transform: scale(1); opacity:1 } }
 .badge-pop { animation: pop .3s cubic-bezier(.34,1.56,.64,1) .12s both; transform-box: fill-box; transform-origin: center; }
 @media (prefers-reduced-motion: reduce) { .pslide, .badge-pop, .evalbar .b, .evalbar .w { animation: none !important; } }
