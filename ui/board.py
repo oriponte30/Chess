@@ -48,8 +48,9 @@ def _animate_pieces(svg: str, pairs: list, flipped: bool) -> str:
 
 
 def board_svg(fen: str, last_uci: str | None = None, best_uci: str | None = None, flipped: bool = False,
-              badge: tuple | None = None, size: int = 520, slide: tuple | None = None) -> str:
+              badge: tuple | None = None, size: int = 520, slide: tuple | None = None, extra_arrows: list | None = None) -> str:
     """badge = (symbol, hex colour) drawn on the square the last move went to.
+    extra_arrows = [(uci, "#rrggbbaa")]: more arrows.
     slide = (uci, backward): animate that move (forward) or its undoing (backward) when the board appears."""
     board = chess.Board(fen)
     last = chess.Move.from_uci(last_uci) if last_uci else None
@@ -57,6 +58,9 @@ def board_svg(fen: str, last_uci: str | None = None, best_uci: str | None = None
     if best_uci:
         bm = chess.Move.from_uci(best_uci)
         arrows.append(chess.svg.Arrow(bm.from_square, bm.to_square, color="#7fa650cc"))
+    for uci, color in (extra_arrows or []):                      # e.g. the engine's 2nd and 3rd choices in other colours
+        em = chess.Move.from_uci(uci)
+        arrows.append(chess.svg.Arrow(em.from_square, em.to_square, color=color))
     svg = chess.svg.board(board, lastmove=last, arrows=arrows, flipped=flipped, size=size, coordinates=True,
                           colors={"square light": "#eeeed2", "square dark": "#769656", "square light lastmove": "#f6f669",
                                   "square dark lastmove": "#baca2b", "margin": "#1f2933", "coord": "#c9d1d9"})

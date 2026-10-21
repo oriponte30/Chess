@@ -148,6 +148,30 @@ class LessonTree:
             options.append({"move": c, "line": line, "replies": [(r, self.main_line(r, 2)) for r in c.children]})
         return options
 
+    def top_lines(self, node: Node, n: int = 3, plies: int = 10) -> list:
+        """Up to `n` clearly different prepared lines from this position (each a list of nodes, at most `plies` long). The first is the main
+        line; every next one is the line that splits off from those already chosen as early as possible."""
+        leaves = []
+
+        def walk(nd, acc):
+            nd = self.effective(nd)
+            if not nd.children:
+                if acc:
+                    leaves.append(acc)
+                return
+            for c in nd.children:
+                walk(c, acc + [c])
+
+        walk(node, [])
+        chosen = []
+        while leaves and len(chosen) < n:
+            def shared(l):
+                return max((next((i for i, (a, b) in enumerate(zip(l, c)) if a.uci != b.uci), min(len(l), len(c))) for c in chosen), default=0)
+            best = min(leaves, key=shared)                 # min() keeps the first (main-line order) among ties
+            leaves.remove(best)
+            chosen.append(best)
+        return [l[:plies] for l in chosen]
+
     def count(self) -> int:
         return len(self.by_epd) - 1
 

@@ -7,6 +7,7 @@ import streamlit as st
 from core import lessons, service
 from ui import views
 from ui.board import board_svg
+from ui.chessboard import board_component
 
 ss = st.session_state
 TREE = lessons.CARO_KANN
@@ -123,9 +124,13 @@ def lesson():
     with left:
         last = board.peek().uci() if board.move_stack else None
         arrow = top[0]["first"] if top else None
-        svg = board_svg(board.fen(), last, arrow, flipped, None, slide=_slide(path))
+        more = [(t["first"], c) for t, c in zip(top[1:], ("#e0a82ecc", "#d9534fcc")) if t["first"]]     # 2nd and 3rd choice in other colours
+        svg = board_svg(board.fen(), last, arrow, flipped, None, slide=_slide(path), extra_arrows=more)
         svg = svg.replace('width="520" height="520"', 'style="width:100%;height:auto"')
-        st.markdown(f"<div class='boardwrap'>{svg}</div>", unsafe_allow_html=True)
+        made = board_component("lesson_board", board.fen(), f"<div class='boardwrap'>{svg}</div>", flipped)
+        if made:                                          # a click-to-move on the board: extend the path and redraw
+            play(made)
+            st.rerun(scope="fragment")
         b1, b2, b3, b4 = st.columns(4)
         b1.button("⏮", key="nav_first", on_click=reset, width="stretch", help="Back to the start")
         b2.button("◀", key="nav_prev", on_click=back, width="stretch", disabled=not path, help="Take back a move")
@@ -138,7 +143,7 @@ def lesson():
         legal = ["—"] + sorted(board.san(m) for m in board.legal_moves)
         st.selectbox("Try your own move", legal, key="lesson_own", on_change=own_move,
                      help="Any legal move works. If it leaves the lesson, Stockfish's suggestions take over.")
-        st.caption("Tip: ← → on your keyboard take back / play the main line")
+        st.caption("Click a piece to see where it can go, then click a square (or drag). ← → on your keyboard take back / play the main line.")
 
     with right:
         crumbs = []
@@ -163,6 +168,16 @@ def lesson():
                         f"<p>{note}</p>{alias}</div>", unsafe_allow_html=True)
             if section and path:
                 st.markdown(f"<div class='card exp' style='margin-top:10px'><h4>Structure and plan</h4><p>{section['summary']}</p></div>", unsafe_allow_html=True)
+
+            tl = TREE.top_lines(node, 3) if eff else []
+            if tl:
+                st.markdown(f"<h4 class='sechead'>Top {len(tl)} lines from here</h4>", unsafe_allow_html=True)
+                for i, line in enumerate(tl):
+                    with st.container(border=True):
+                        cc = st.columns([1.3, 3], vertical_alignment="center")
+                        cc[0].button(f"▶ Line {i + 1}", key=f"tl_{i}_{len(path)}", on_click=play, args=(line[0].uci,), width="stretch",
+                                     help="Plays the first move of this line")
+                        cc[1].markdown(f"<div class='exp'><p style='margin:0'><b>{lessons.fmt_line(line)}</b></p></div>", unsafe_allow_html=True)
 
             opts = TREE.look_ahead(node) if eff else []
             if opts:

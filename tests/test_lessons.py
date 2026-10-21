@@ -73,3 +73,20 @@ def test_every_final_position_is_sound_according_to_stockfish():
         res = eng.analyse_many(boards, 12, 1)
     bad = [(n.label, r[0].cp) for n, r in zip(leaves, res) if abs(r[0].cp) > 130]
     assert not bad, bad                                                  # no lesson line ends in a clearly lost position for either side
+
+
+def test_top_lines_are_distinct_and_three_per_section():
+    for s in lessons.CARO_KANN.sections:
+        node = lessons.CARO_KANN.node_at_san(s["start"])
+        ls = lessons.CARO_KANN.top_lines(node, 3)
+        assert len(ls) == 3
+        assert len({tuple(n.uci for n in l) for l in ls}) == 3
+
+
+def test_legal_map_for_click_to_move():
+    import chess
+    from ui.chessboard import legal_map
+    legal, caps, promos = legal_map(chess.Board())
+    assert sorted(legal["e2"]) == ["e3", "e4"] and sorted(legal["g1"]) == ["f3", "h3"] and not caps and not promos
+    legal, caps, promos = legal_map(chess.Board("8/P7/8/8/8/8/8/k6K w - - 0 1"))
+    assert "a7a8" in promos
