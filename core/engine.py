@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -89,6 +91,8 @@ class StockfishEngine:
             sc = info["score"].white()
             mate = sc.mate()
             lines.append(Line(cp=sc.score(mate_score=MATE_CP), mate=mate, pv=list(info.get("pv", [])), depth=info.get("depth", depth)))
+        if len(self._cache) > 5000:                          # a long-lived engine shouldn't grow without limit
+            self._cache.clear()
         self._cache[key] = lines
         return lines
 
@@ -102,4 +106,76 @@ class StockfishEngine:
         return self
 
     def __exit__(self, *exc):
-        self.close()
+        if not getattr(self, "keep_alive", False):
+            self.close()
+
+
+def default_workers() -> int:
+    """How many engine processes to run side by side: one per CPU core, at most 4 (the hosted app has ~2 cores)."""
+    try:
+        cores = len(os.sched_getaffinity(0))
+    except AttributeError:                                           # non-Linux
+        cores = os.cpu_count() or 1
+    return max(1, min(4, cores))
+
+
+class ParallelEngine:
+    """Several single-threaded Stockfish processes that split a game's positions between them. Roughly twice as fast as one process on
+    two cores, and it keeps the same `analyse` method (plus `analyse_many`) so the rest of the code doesn't care."""
+
+    def __init__(self, workers: int | None = None, path: str | None = None, hash_mb: int = 64, keep_alive: bool = False):
+        n = workers or default_workers()
+        self.keep_alive = keep_alive          # True = `with` doesn't shut the engines down (a shared, long-lived pool)
+        self._engines = [StockfishEngine(path=path, threads=1, hash_mb=hash_mb) for _ in range(n)]
+        self.version = self._engines[0].version
+        self._free = list(self._engines)
+        self._lock = threading.Lock()
+        self._sem = threading.Semaphore(n)
+
+    def _take(self):
+        self._sem.acquire()
+        with self._lock:
+            return self._free.pop()
+
+    def _give(self, eng):
+        with self._lock:
+            self._free.append(eng)
+        self._sem.release()
+
+    def analyse(self, board: chess.Board, depth: int, multipv: int = 1) -> list:
+        eng = self._take()
+        try:
+            return eng.analyse(board, depth, multipv)
+        finally:
+            self._give(eng)
+
+    def analyse_many(self, boards: list, depth: int, multipv: int = 1, progress=None) -> list:
+        """Analyse every board (results in the same order). progress(done, total) is always called from the calling thread, which
+        matters for Streamlit: its progress bar can't be updated from a worker thread."""
+        total = len(boards)
+        if len(self._engines) == 1:
+            out = []
+            for i, b in enumerate(boards):
+                out.append(self.analyse(b, depth, multipv))
+                if progress:
+                    progress(i + 1, total)
+            return out
+        out = [None] * total
+        with ThreadPoolExecutor(max_workers=len(self._engines)) as pool:
+            futures = {pool.submit(self.analyse, b, depth, multipv): i for i, b in enumerate(boards)}
+            for k, fut in enumerate(as_completed(futures), 1):
+                out[futures[fut]] = fut.result()
+                if progress:
+                    progress(k, total)
+        return out
+
+    def close(self):
+        for e in self._engines:
+            e.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if not getattr(self, "keep_alive", False):
+            self.close()

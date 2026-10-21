@@ -292,11 +292,14 @@ def analyze_game(game: chess.pgn.Game, engine, depth: int = 14, progress=None, p
         return rev
 
     # ---- engine pass: every position once, two lines ---------------------------------------------------------------
-    lines = []
-    for i, b in enumerate(boards):
-        lines.append(engine.analyse(b, depth, 2))
-        if progress:
-            progress(i + 1, len(boards))
+    if hasattr(engine, "analyse_many"):                       # several engine processes working side by side
+        lines = engine.analyse_many(boards, depth, 2, progress)
+    else:
+        lines = []
+        for i, b in enumerate(boards):
+            lines.append(engine.analyse(b, depth, 2))
+            if progress:
+                progress(i + 1, len(boards))
 
     pos_wp_white = [win_prob(l[0].cp) for l in lines]
     rev.evals = [{"ply": i, "cp": max(-1500, min(1500, l[0].cp)), "wp": round(pos_wp_white[i], 1)} for i, l in enumerate(lines)]

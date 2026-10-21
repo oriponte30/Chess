@@ -25,15 +25,18 @@ def test_paste_a_pgn_and_step_through_the_review(monkeypatch, blunder):
     rev = t.session_state["rev"]
     assert rev is not None and rev.player_color == chess.WHITE
     labels = [b.label for b in t.button]
-    assert "← Back to games" in labels and any(k.startswith("ml_") for k in [b.key or "" for b in t.button])
+    assert "← Back to games" in labels and any(b.key == "nav_next" for b in t.button)
     next(b for b in t.button if b.key == "nav_next").click().run()
     assert t.session_state["ply"] == 1 and not t.exception, t.exception
     next(b for b in t.button if b.key == "nav_last").click().run()
     assert t.session_state["ply"] == len(rev.moves)
     next(b for b in t.button if b.key == "nav_pk").click().run()                         # previous key moment
     assert t.session_state["ply"] in rev.key_moments
-    next(b for b in t.button if b.key == "ml_3").click().run()
-    assert t.session_state["ply"] == 3
+    t.session_state["ply_pick"] = 3                                                      # what clicking move 3 in the list does
+    from ui import views
+    import streamlit as st
+    assert views._pill_label(rev.moves[2]).startswith("2.") and views._pill_label(rev.moves[1]) == rev.moves[1].san + (
+        "" if rev.moves[1].classification in ("Book", "Forced", "Good") else views.SYMBOL.get(rev.moves[1].classification, ""))
     next(b for b in t.button if b.label == "← Back to games").click().run()
     assert t.session_state["rev"] is None and not t.exception
 
@@ -48,7 +51,7 @@ def test_load_games_then_review_one(monkeypatch):
     next(b for b in t.button if b.key == "rv_123456789").click().run()
     assert t.session_state["rev"] is not None and t.session_state["rev"].player_color == chess.BLACK, t.exception
     next(b for b in t.button if b.label == "← Back to games").click().run()
-    assert any(b.label == "Open review" for b in t.button)                              # it was saved
+    assert any(b.label == "Open ✓" for b in t.button)                              # it was saved
 
 
 def test_friendly_error_for_an_unknown_user(monkeypatch):

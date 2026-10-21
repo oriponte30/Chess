@@ -105,3 +105,34 @@ def test_real_stockfish_finds_the_queen_sacrifice(opera):
     assert rev.moves[-1].san == "Rd8#" and rev.moves[-1].classification != "Blunder"
     assert 70 <= rev.accuracy_white <= 100 and rev.accuracy_white > 0
     assert sac.classification != "Brilliant" or sac.ply in rev.key_moments
+
+
+def test_move_facts_for_cross_game_features(monkeypatch):
+    monkeypatch.setattr(service, "make_engine", lambda: FakeEngine())
+    service.review_game(PGN, depth=12, username="Alice", game_id="g1")
+    rows = store.move_facts("alice")
+    assert len(rows) == 7 and {r["game_id"] for r in rows} == {"g1"}
+    assert all(r["player_color"] == 1 for r in rows)                      # Alice had White
+    assert {"san", "classification", "loss", "accuracy", "phase"} <= set(rows[0])
+    assert store.move_facts("nobody") == []
+
+
+def test_parallel_pool_matches_a_single_engine_and_reports_progress_from_the_caller():
+    import threading
+    path = real_engine_path()
+    if not path:
+        pytest.skip("Stockfish isn't installed")
+    from core.engine import ParallelEngine, StockfishEngine
+    b = chess.Board()
+    boards = [b.copy()]
+    for u in ("e2e4", "e7e5", "g1f3", "b8c6"):
+        b.push_uci(u)
+        boards.append(b.copy())
+    seen, main = [], threading.get_ident()
+    with ParallelEngine(2) as pool:
+        got = pool.analyse_many(boards, 8, 2, lambda d, t: seen.append((d, t, threading.get_ident() == main)))
+    assert [s[0] for s in seen] == [1, 2, 3, 4, 5] and all(s[2] for s in seen)        # progress is never called from a worker thread
+    with StockfishEngine() as one:
+        ref = [one.analyse(x, 8, 2) for x in boards]
+    assert [g[0].pv[0] for g in got][:1] == [r[0].pv[0] for r in ref][:1]        # same best opening move
+    assert len(got) == len(boards) and all(len(g) == 2 for g in got)

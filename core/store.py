@@ -38,12 +38,17 @@ def _path() -> str:
     return os.environ.get("CHESS_COACH_DB") or str(Path(__file__).resolve().parent.parent / "data" / "coach.db")
 
 
+_ready: set = set()
+
+
 def _conn() -> sqlite3.Connection:
     p = _path()
     if p != ":memory:":
         Path(p).parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(p)
-    c.executescript(SCHEMA)
+    if p not in _ready or p == ":memory:":                 # create the tables once per database, not on every call
+        c.executescript(SCHEMA)
+        _ready.add(p)
     return c
 
 
@@ -77,3 +82,17 @@ def recent_history(username: str, limit: int = 10, exclude: str | None = None) -
         rows = c.execute("SELECT game_id, entry FROM history WHERE username=? ORDER BY reviewed DESC LIMIT ?",
                          (username.lower(), limit + 1)).fetchall()
     return [json.loads(e) for g, e in rows if g != exclude][:limit]
+
+
+def move_facts(username: str, limit_games: int = 200) -> list:
+    """Per-move rows (dicts) for the user's reviewed games, newest games first (player_color says which side the user played: 1 white, 0 black). The building block for stats, training and any other
+    feature that wants to look across games instead of at one."""
+    with _conn() as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT f.game_id, f.depth, f.ply, f.color, f.san, f.classification, f.loss, f.accuracy, f.phase, f.clock, r.reviewed, "
+            "json_extract(r.payload, '$.player_color') AS player_color "
+            "FROM move_facts f JOIN reviews r ON r.game_id = f.game_id AND r.depth = f.depth "
+            "WHERE r.username = ? AND r.game_id IN (SELECT game_id FROM reviews WHERE username = ? ORDER BY reviewed DESC LIMIT ?) "
+            "ORDER BY r.reviewed DESC, f.game_id, f.ply", (username.lower(), username.lower(), limit_games)).fetchall()
+    return [dict(r) for r in rows]

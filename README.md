@@ -55,16 +55,24 @@ streamlit run app.py
 
 ## Layout
 ```
-app.py              Streamlit app (games list, paste-a-PGN, review screen)
+app.py              the shell: page setup, shared sidebar, navigation (nothing feature-specific lives here)
+app_pages/          one file per feature: review.py (the game reviewer), training.py and insights.py (starting points)
+ui/features.py     the list of pages; add a line here to register a new feature
+ui/state.py         shared session state and settings (depth, username)
+ui/sidebar.py       the sidebar every page shares
+ui/views.py         review-screen components (board viewer, key moments, verdict, game cards)
+ui/styles.py        all CSS, driven by a few design tokens at the top
 core/chesscom.py    chess.com API client
-core/engine.py      Stockfish over UCI
+core/engine.py      Stockfish over UCI (a pool of engines that split a game's positions between them)
 core/review.py      win probability, labels, accuracy, key moments
 core/coach.py       explanations, verdict, trends, puzzle tags
-core/store.py       SQLite storage (reviews, per-move facts, history)
+core/store.py       SQLite storage (reviews, per-move facts, history) and store.move_facts() for cross-game features
 core/service.py     one call: cache -> engine -> coach -> store
-ui/                 board drawing, styles, review screen components
-data/openings.json  opening names (built by scripts/build_openings.py from lichess chess-openings, CC0)
 ```
+
+### Adding a feature
+1. Create `app_pages/<name>.py`. It is an ordinary Streamlit script; read the user and depth from `ui/state.py`, and past games from `core/store.py`.
+2. Add one `Feature(...)` line to `ui/features.py`. The page shows up in the top navigation.
 
 ## Next
 Training tab (openings from your own losses, tactics from your own blunders, endgames), a warehouse/analytics layer over `move_facts`,

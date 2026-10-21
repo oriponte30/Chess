@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 from html import escape
 
 import chess
@@ -51,14 +52,28 @@ def game_header(rev: GameReview):
                 f"<div class='meta'>{' · '.join(escape(x) for x in bits)} {link}</div></div>", unsafe_allow_html=True)
 
 
+def _ring(pct) -> str:
+    """A circular accuracy gauge (SVG)."""
+    if pct is None:
+        return "<div class='ring'><div class='v'>–</div></div>"
+    col = "#7fa650" if pct >= 85 else "#c3c94a" if pct >= 70 else "#e6a23c" if pct >= 55 else "#e5645a"
+    r = 32
+    c = 2 * math.pi * r
+    return (f"<div class='ring'><svg viewBox='0 0 78 78'><circle cx='39' cy='39' r='{r}' fill='none' stroke='rgba(255,255,255,.1)' stroke-width='7'/>"
+            f"<circle cx='39' cy='39' r='{r}' fill='none' stroke='{col}' stroke-width='7' stroke-linecap='round' "
+            f"stroke-dasharray='{c:.1f}' stroke-dashoffset='{c * (1 - max(0, min(100, pct)) / 100):.1f}'/></svg>"
+            f"<div class='v'>{pct:.0f}</div></div>")
+
+
 def accuracy_and_counts(rev: GameReview):
     me = rev.player_color
-    c1, c2, c3 = st.columns([1, 1, 2])
+    c1, c2, c3 = st.columns([1, 1, 1.6])
     for col, color, acc, name, elo in ((c1, chess.WHITE, rev.accuracy_white, rev.white, rev.white_elo),
                                        (c2, chess.BLACK, rev.accuracy_black, rev.black, rev.black_elo)):
         with col:
-            st.markdown(f"<div class='card acc {'me' if me == color else ''}'><div class='who'>{'⚪ White' if color else '⚫ Black'}</div>"
-                        f"<div class='num'>{fmt_acc(acc)}</div><small>{escape(name)}{f' · {elo}' if elo else ''}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card acc {'me' if me == color else ''}'>{_ring(acc)}<div><div class='who'>{'⚪ White' if color else '⚫ Black'} accuracy</div>"
+                        f"<div class='nm'>{escape(name)}</div><div class='sub'>{f'{elo} rating' if elo else ''}{' · you' if me == color else ''}</div></div></div>",
+                        unsafe_allow_html=True)
     with c3:
         wc, bc = rev.counts(chess.WHITE), rev.counts(chess.BLACK)
         rows = ""
@@ -67,7 +82,7 @@ def accuracy_and_counts(rev: GameReview):
                 continue
             rows += (f"<tr><td><span class='dot' style='background:{COLOR[cl]}'></span>{cl}</td>"
                      f"<td class='n'>{wc[cl]}</td><td class='n'>{bc[cl]}</td></tr>")
-        st.markdown(f"<div class='card'><table class='mq'><tr><td></td><td class='n' style='color:#8fa3b5'>⚪</td><td class='n' style='color:#8fa3b5'>⚫</td></tr>"
+        st.markdown(f"<div class='card'><table class='mq'><tr><td></td><td class='n' style='color:#8b9db0'>⚪</td><td class='n' style='color:#8b9db0'>⚫</td></tr>"
                     f"{rows}</table></div>", unsafe_allow_html=True)
 
 
@@ -84,6 +99,17 @@ def _jump_key(rev: GameReview, direction: int):
     cands = [k for k in ks if (k > cur if direction > 0 else k < cur)]
     if cands:
         st.session_state.ply = cands[0] if direction > 0 else cands[-1]
+
+
+def _pill_label(m: rv.MoveReview) -> str:
+    sym = SYMBOL.get(m.classification, "") if m.classification not in ("Book", "Forced", "Good") else ""
+    return f"{m.move_no}. {m.san}{sym}" if m.color == chess.WHITE else f"{m.san}{sym}"
+
+
+def _pick_ply(n: int):
+    v = st.session_state.get("ply_pick")
+    if v is not None:                                    # clicking the selected move again deselects it: ignore that
+        st.session_state.ply = max(0, min(n, int(v)))
 
 
 def _eval_bar(wp_white: float, flipped: bool) -> str:
@@ -156,9 +182,13 @@ _KEYS_JS = """
 """
 
 
-def _keyboard_nav():
+def keyboard_nav():
     """Left/Right arrows step through the moves, Home/End jump to the start/end (clicks the nav buttons)."""
-    components.html(_KEYS_JS, height=0)
+    with st.container(key="kbnav"):                      # zero-height holder for the invisible script frame
+        if hasattr(st, "iframe"):                       # current Streamlit
+            st.iframe(_KEYS_JS, height=1)
+        else:                                           # older Streamlit versions
+            components.html(_KEYS_JS, height=0)
 
 
 @st.fragment
@@ -180,8 +210,8 @@ def viewer(rev: GameReview):
         wp = rev.evals[ply]["wp"] if rev.evals else 50.0
         svg = board_svg(fen, m.uci if m else None, best, flipped, badge)
         svg = svg.replace('width="520" height="520"', 'style="width:100%;height:auto"')
-        st.markdown(f"<div style='display:flex;gap:10px;align-items:stretch'>{_eval_bar(wp, flipped)}"
-                    f"<div style='flex:1;max-width:560px'>{svg}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='boardwrap'><div style='display:flex;gap:12px;align-items:stretch'>{_eval_bar(wp, flipped)}"
+                    f"<div style='flex:1;max-width:560px'>{svg}</div></div></div>", unsafe_allow_html=True)
         b1, b2, b3, b4 = st.columns(4)
         b1.button("⏮", key="nav_first", on_click=_set_ply, args=(0, n), width="stretch", help="Start")
         b2.button("◀", key="nav_prev", on_click=_set_ply, args=(ply - 1, n), width="stretch", disabled=ply <= 0, help="Previous move")
@@ -191,23 +221,17 @@ def viewer(rev: GameReview):
         b5.button("◀ Previous key moment", key="nav_pk", on_click=_jump_key, args=(rev, -1), width="stretch", disabled=not rev.key_moments)
         b6.button("Next key moment ▶", key="nav_nk", on_click=_jump_key, args=(rev, 1), width="stretch", disabled=not rev.key_moments)
         t1, t2 = st.columns(2)
-        _keyboard_nav()
         t1.toggle("Show the best move", value=True, key="show_best")
         t2.toggle("Flip board", value=flipped, key="flip")
-        st.caption("Tip: use ← → on your keyboard to step through the moves (Home / End jump to the start / end).")
+        st.caption("Tip: ← → on your keyboard step through the moves · Home / End jump to the start / end")
     with right:
         _move_card(rev, ply, bool(ss.get("show_best", True)))
         _graph(rev, ply)
+        labels = {mm.ply: _pill_label(mm) for mm in rev.moves}
+        ss.ply_pick = ply or None                          # keep the list in step with the board and the arrow keys
         with st.container(height=330, key="movelist"):
-            for i in range(0, n, 2):
-                c0, c1, c2 = st.columns([0.55, 1.6, 1.6], gap="small")
-                c0.markdown(f"<div style='padding-top:5px;color:#8fa3b5;font-weight:700'>{i // 2 + 1}.</div>", unsafe_allow_html=True)
-                for j, c in ((i, c1), (i + 1, c2)):
-                    if j < n:
-                        mm = rev.moves[j]
-                        sym = SYMBOL.get(mm.classification, "") if mm.classification not in ("Book", "Forced", "Good") else ""
-                        c.button(f"{mm.san} {sym}".strip(), key=f"ml_{j + 1}", on_click=_set_ply, args=(j + 1, n),
-                                 type="primary" if ply == j + 1 else "tertiary", width="stretch")
+            st.pills("Moves", list(labels), format_func=labels.get, selection_mode="single", key="ply_pick",
+                     on_change=_pick_ply, args=(n,), label_visibility="collapsed")
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -251,21 +275,36 @@ def verdict(rev: GameReview):
 # --------------------------------------------------------------------------------------------------------------------
 # games list
 # --------------------------------------------------------------------------------------------------------------------
+_TC_ICON = {"bullet": "🚀", "blitz": "⚡", "rapid": "⏱️", "daily": "✉️"}
+
+
+def games_summary(games: list):
+    """A small strip above the list: results and average opponent rating across the loaded games."""
+    res = [g.user_result for g in games]
+    opp = [g.black_elo if g.user_color == chess.WHITE else g.white_elo for g in games]
+    opp = [o for o in opp if o]
+    cells = [(res.count("win"), "wins"), (res.count("draw"), "draws"), (res.count("loss"), "losses")]
+    if opp:
+        cells.append((round(sum(opp) / len(opp)), "avg opponent"))
+    st.markdown("<div class='strip'>" + "".join(f"<div class='s'><b>{v}</b>{k}</div>" for v, k in cells) + "</div>", unsafe_allow_html=True)
+
+
 def games_list(games: list, reviewed: dict, depth: int):
-    """Shows the cards; returns the GameInfo the user clicked, if any."""
+    """Shows the games as a two-column grid of cards; returns the GameInfo the user clicked, if any."""
     clicked = None
-    for g in games:
+    cols = st.columns(2, gap="medium")
+    for i, g in enumerate(games):
         when = dt.datetime.fromtimestamp(g.end_time, dt.timezone.utc).strftime("%d %b %Y") if g.end_time else ""
         elo_me = g.white_elo if g.user_color == chess.WHITE else g.black_elo
         elo_op = g.black_elo if g.user_color == chess.WHITE else g.white_elo
         done = reviewed.get(g.game_id) == depth
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([1.1, 5, 1.8], vertical_alignment="center")
-            c1.markdown(result_pill(g.user_result) or "", unsafe_allow_html=True)
-            c2.markdown(f"<div class='gm'><div><div class='who'>{'⚪' if g.user_color == chess.WHITE else '⚫'} vs {escape(g.opponent)} "
-                        f"<span style='color:#8fa3b5;font-weight:600'>({elo_op or '?'})</span></div>"
-                        f"<div class='sub'>{when} · {escape(g.time_class)} {escape(g.time_control)} · your rating {elo_me or '?'}</div></div></div>",
-                        unsafe_allow_html=True)
-            if c3.button("Open review" if done else "Review", key=f"rv_{g.game_id}", type="secondary" if done else "primary", width="stretch"):
-                clicked = g
+        with cols[i % 2]:
+            with st.container(key=f"gc_{g.game_id}"):
+                c1, c2 = st.columns([3.2, 1.4], vertical_alignment="center")
+                c1.markdown(f"<div class='stripe {g.user_result}'></div><div class='gm'><div class='who'>{'⚪' if g.user_color == chess.WHITE else '⚫'} vs {escape(g.opponent)} "
+                            f"<span class='soft' style='font-weight:600'>({elo_op or '?'})</span> {result_pill(g.user_result)}</div>"
+                            f"<div class='sub'><span class='chip'>{_TC_ICON.get(g.time_class, '♟️')} {escape(g.time_class)} {escape(g.time_control)}</span>"
+                            f"{when} · you {elo_me or '?'}</div></div>", unsafe_allow_html=True)
+                if c2.button("Open ✓" if done else "Review", key=f"rv_{g.game_id}", type="secondary" if done else "primary", width="stretch"):
+                    clicked = g
     return clicked
