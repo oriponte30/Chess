@@ -56,7 +56,7 @@ streamlit run app.py
 ## Layout
 ```
 app.py              the shell: page setup, shared sidebar, navigation (nothing feature-specific lives here)
-app_pages/          one file per feature: review.py (the game reviewer), training.py and insights.py (starting points)
+app_pages/          one file per feature: review.py (game reviewer), lessons.py (interactive opening lessons), training.py (hub + Coach Practice), insights.py
 ui/features.py     the list of pages; add a line here to register a new feature
 ui/state.py         shared session state and settings (depth, username)
 ui/sidebar.py       the sidebar every page shares
@@ -66,6 +66,8 @@ core/chesscom.py    chess.com API client
 core/engine.py      Stockfish over UCI (a pool of engines that split a game's positions between them)
 core/review.py      win probability, labels, accuracy, key moments
 core/coach.py       explanations, verdict, trends, puzzle tags
+core/lessons.py     opening lessons as a variation tree (Caro-Kann included), verified with python-chess and Stockfish
+core/insights.py    turns stored reviews into coach notes and focus areas
 core/store.py       SQLite storage (reviews, per-move facts, history) and store.move_facts() for cross-game features
 core/service.py     one call: cache -> engine -> coach -> store
 ```

@@ -16,6 +16,7 @@ class Feature:
 
 FEATURES = [
     Feature("Game review", "♟️", "app_pages/review.py", "review", default=True),
+    Feature("Lessons", "📚", "app_pages/lessons.py", "lessons"),
     Feature("Training", "🎯", "app_pages/training.py", "training"),
     Feature("Insights", "📈", "app_pages/insights.py", "insights"),
 ]

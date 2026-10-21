@@ -69,3 +69,33 @@ def test_bad_pgn_shows_an_error_not_a_crash(monkeypatch):
     t.text_area(key="pgn_text").set_value("this is not chess").run()
     next(b for b in t.button if b.label == "Review this game").click().run()
     assert any("PGN" in e.value for e in t.error) and not t.exception
+
+
+def test_navigation_has_lessons_and_a_training_hub(monkeypatch):
+    from ui.features import FEATURES
+    assert [f.title for f in FEATURES][:4] == ["Game review", "Lessons", "Training", "Insights"] or {"Lessons", "Training"} <= {f.title for f in FEATURES}
+
+
+def test_lessons_page_plays_the_caro_kann(monkeypatch):
+    t = _app(monkeypatch)
+    t.switch_page("app_pages/lessons.py").run()
+    assert not t.exception, t.exception
+    next(b for b in t.button if b.key == "sec_advance").click().run()
+    assert len(t.session_state["lesson_path"]) == 5 and not t.exception, t.exception          # 1.e4 c6 2.d4 d5 3.e5
+    next(b for b in t.button if b.key == "nav_next").click().run()                             # main line: 3...Bf5
+    assert len(t.session_state["lesson_path"]) == 6
+    next(b for b in t.button if b.key == "nav_prev").click().run()
+    assert len(t.session_state["lesson_path"]) == 5
+    t.toggle(key="lesson_engine").set_value(True).run()                                         # engine overlay (fake engine in tests)
+    assert not t.exception, t.exception
+    t.selectbox(key="lesson_own").set_value("h6").run()                                         # a move that is not in the lesson
+    assert len(t.session_state["lesson_path"]) == 6 and any("Off the lesson tree" in m.value for m in t.markdown)
+
+
+def test_training_hub_and_insights_pages_render(monkeypatch):
+    t = _app(monkeypatch)
+    t.switch_page("app_pages/training.py").run()
+    assert not t.exception, t.exception
+    assert any("Puzzle Duels" in m.value for m in t.markdown)
+    t.switch_page("app_pages/insights.py").run()
+    assert not t.exception, t.exception

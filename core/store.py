@@ -96,3 +96,45 @@ def move_facts(username: str, limit_games: int = 200) -> list:
             "WHERE r.username = ? AND r.game_id IN (SELECT game_id FROM reviews WHERE username = ? ORDER BY reviewed DESC LIMIT ?) "
             "ORDER BY r.reviewed DESC, f.game_id, f.ply", (username.lower(), username.lower(), limit_games)).fetchall()
     return [dict(r) for r in rows]
+
+
+def review_rows(username: str, limit: int = 60) -> list:
+    """One row per reviewed game (newest first, deepest review kept): who the user was, their accuracy, the opening and the result."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT game_id, depth, reviewed, json_extract(payload,'$.player_color'), json_extract(payload,'$.accuracy_white'), "
+            "json_extract(payload,'$.accuracy_black'), json_extract(payload,'$.opening'), json_extract(payload,'$.result'), "
+            "json_extract(payload,'$.white'), json_extract(payload,'$.black') "
+            "FROM reviews WHERE username=? ORDER BY reviewed DESC, depth DESC", (username.lower(),)).fetchall()
+    seen, out = set(), []
+    for gid, depth, reviewed, color, aw, ab, opening, result, white, black in rows:
+        if gid in seen:
+            continue
+        seen.add(gid)
+        mine = aw if color == 1 else ab if color == 0 else None
+        out.append({"game_id": gid, "depth": depth, "reviewed": reviewed, "player_color": color, "accuracy": mine,
+                    "opening": opening or "", "result": result or "", "white": white or "", "black": black or ""})
+    return out[:limit]
+
+
+def mistakes(username: str, limit_games: int = 40, min_loss: float = 15.0) -> list:
+    """The user's own serious mistakes across their latest reviewed games, ready to be turned into practice positions."""
+    ids = [r["game_id"] for r in review_rows(username, limit_games)]
+    out = []
+    with _conn() as c:
+        for gid in ids:
+            row = c.execute("SELECT payload FROM reviews WHERE game_id=? AND username=? ORDER BY depth DESC LIMIT 1", (gid, username.lower())).fetchone()
+            if not row:
+                continue
+            rev = json.loads(row[0])
+            color = rev.get("player_color")
+            if color is None:
+                continue
+            for m in rev.get("moves", []):
+                if m["color"] == color and m["classification"] in ("Mistake", "Blunder", "Missed Win") and m["loss"] >= min_loss and m.get("best_uci"):
+                    out.append({"game_id": gid, "ply": m["ply"], "fen": m["fen_before"], "played": m["san"], "played_uci": m["uci"],
+                                "best_san": m["best_san"], "best_uci": m["best_uci"], "best_line": m.get("best_pv_san") or [],
+                                "classification": m["classification"], "loss": m["loss"], "phase": m["phase"], "themes": m.get("themes") or [],
+                                "explanation": m.get("explanation", ""), "opening": rev.get("opening", ""),
+                                "opponent": rev["black"] if color == 1 else rev["white"]})
+    return out

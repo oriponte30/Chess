@@ -28,6 +28,7 @@ def open_review(game_id: str, pgn: str, username: str, depth: int):
     bar.empty()
     ss.rev, ss.rev_id, ss.ply = rev, game_id, 0
     ss.pop("flip", None)
+    ss.pop("_shown", None)
     st.rerun()
 
 
@@ -48,7 +49,7 @@ if ss.rev is not None:
     st.button("← Back to games", on_click=close_review)
     views.game_header(rev)
     st.write("")
-    views.keyboard_nav()
+    _ = views.keyboard_nav()
     views.viewer(rev)
     st.write("")
     views.accuracy_and_counts(rev)

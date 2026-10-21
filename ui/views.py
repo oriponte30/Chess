@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 from core import coach
 from core import review as rv
 from core.review import COLOR, SYMBOL, GameReview
+from . import theme
 from .board import board_svg
 
 BAD = ("Inaccuracy", "Mistake", "Blunder", "Missed Win")
@@ -47,8 +48,8 @@ def game_header(rev: GameReview):
     b = f"{escape(rev.black)} ({rev.black_elo})" if rev.black_elo else escape(rev.black)
     bits = [x for x in (rev.date, rev.time_control and f"{rev.time_control}s", rev.termination) if x]
     opening = f"<span class='pill op'>{escape(rev.eco)} · {escape(rev.opening)}</span>" if rev.opening else ""
-    link = f"<a href='{escape(rev.url)}' target='_blank' style='color:#8fb4ff'>open on chess.com ↗</a>" if rev.url.startswith("http") else ""
-    st.markdown(f"<div class='card gh'><div class='vs'>⚪ {w} <span style='color:#8fa3b5'>vs</span> ⚫ {b}</div>{result_pill(user_res)}{opening}"
+    link = f"<a href='{escape(rev.url)}' target='_blank'>open on chess.com ↗</a>" if rev.url.startswith("http") else ""
+    st.markdown(f"<div class='card gh'><div class='vs'>⚪ {w} <span class='soft'>vs</span> ⚫ {b}</div>{result_pill(user_res)}{opening}"
                 f"<div class='meta'>{' · '.join(escape(x) for x in bits)} {link}</div></div>", unsafe_allow_html=True)
 
 
@@ -59,7 +60,7 @@ def _ring(pct) -> str:
     col = "#7fa650" if pct >= 85 else "#c3c94a" if pct >= 70 else "#e6a23c" if pct >= 55 else "#e5645a"
     r = 32
     c = 2 * math.pi * r
-    return (f"<div class='ring'><svg viewBox='0 0 78 78'><circle cx='39' cy='39' r='{r}' fill='none' stroke='rgba(255,255,255,.1)' stroke-width='7'/>"
+    return (f"<div class='ring'><svg viewBox='0 0 78 78'><circle cx='39' cy='39' r='{r}' fill='none' style='stroke:var(--ring_bg)' stroke-width='7'/>"
             f"<circle cx='39' cy='39' r='{r}' fill='none' stroke='{col}' stroke-width='7' stroke-linecap='round' "
             f"stroke-dasharray='{c:.1f}' stroke-dashoffset='{c * (1 - max(0, min(100, pct)) / 100):.1f}'/></svg>"
             f"<div class='v'>{pct:.0f}</div></div>")
@@ -82,7 +83,7 @@ def accuracy_and_counts(rev: GameReview):
                 continue
             rows += (f"<tr><td><span class='dot' style='background:{COLOR[cl]}'></span>{cl}</td>"
                      f"<td class='n'>{wc[cl]}</td><td class='n'>{bc[cl]}</td></tr>")
-        st.markdown(f"<div class='card'><table class='mq'><tr><td></td><td class='n' style='color:#8b9db0'>⚪</td><td class='n' style='color:#8b9db0'>⚫</td></tr>"
+        st.markdown(f"<div class='card'><table class='mq'><tr><td></td><td class='n soft'>⚪</td><td class='n soft'>⚫</td></tr>"
                     f"{rows}</table></div>", unsafe_allow_html=True)
 
 
@@ -113,17 +114,19 @@ def _pick_ply(n: int):
 
 
 def _eval_bar(wp_white: float, flipped: bool) -> str:
-    top_is_black = not flipped
-    black_h = 100 - wp_white if top_is_black else wp_white
-    white_h = 100 - black_h
-    first = f"<div class='b' style='height:{black_h:.1f}%'></div>" if top_is_black else f"<div class='w' style='height:{white_h:.1f}%'></div>"
-    second = f"<div class='w' style='height:{white_h:.1f}%'></div>" if top_is_black else f"<div class='b' style='height:{black_h:.1f}%'></div>"
-    return f"<div class='evalbar' style='align-self:stretch;min-height:300px'>{first}{second}</div>"
+    """Vertical bar next to the board. White's share is its win probability and Black's is the rest, whichever way the board faces:
+    +2.5 for White fills white from White's side of the board, a Black advantage fills black from Black's side."""
+    white_h = max(0.0, min(100.0, wp_white))
+    black_h = 100.0 - white_h
+    w = f"<div class='w' style='height:{white_h:.1f}%;transform-origin:{'top' if flipped else 'bottom'}'></div>"
+    b = f"<div class='b' style='height:{black_h:.1f}%;transform-origin:{'bottom' if flipped else 'top'}'></div>"
+    first, second = (w, b) if flipped else (b, w)       # White's side of the board is at the bottom, unless the board is flipped
+    return f"<div class='evalbar' title='White {white_h:.0f}% / Black {black_h:.0f}%' style='align-self:stretch;min-height:300px'>{first}{second}</div>"
 
 
 def _move_card(rev: GameReview, ply: int, show_best: bool):
     if ply == 0:
-        st.markdown(f"<div class='mc' style='border-color:#8fa3b5'><div class='t'>Start of the game</div>"
+        st.markdown(f"<div class='mc' style='border-color:var(--muted)'><div class='t'>Start of the game</div>"
                     f"<div class='e'>{escape(rev.summary)}</div></div>", unsafe_allow_html=True)
         return
     m = rev.moves[ply - 1]
@@ -131,27 +134,28 @@ def _move_card(rev: GameReview, ply: int, show_best: bool):
     best = ""
     if m.classification in BAD or (m.classification in ("Good",) and m.loss > 3):
         if m.best_san and m.best_san != m.san:
-            best = f"<div class='w'>Engine's choice: <b style='color:#b8e08a'>{escape(m.best_san)}</b> (green arrow)</div>"
+            best = f"<div class='w'>Engine's choice: <b>{escape(m.best_san)}</b> (green arrow)</div>"
     st.markdown(f"<div class='mc' style='border-color:{col}'><div class='t'>{escape(move_label(m))}"
                 f"<i style='color:{col}'>{m.classification}</i></div><div class='e'>{escape(m.explanation)}</div>{best}</div>", unsafe_allow_html=True)
 
 
 def _graph(rev: GameReview, ply: int):
+    T = theme.tokens()
     df = pd.DataFrame(rev.evals)
     keys = pd.DataFrame([{"ply": m.ply, "wp": rev.evals[m.ply]["wp"], "cls": m.classification, "color": COLOR[m.classification],
                           "label": move_label(m)} for m in rev.moves if m.ply in rev.key_moments])
     layers = [
-        {"data": {"values": df.to_dict("records")}, "mark": {"type": "area", "interpolate": "monotone", "color": "#d9dee3", "opacity": 0.85},
-         "encoding": {"x": {"field": "ply", "type": "quantitative", "axis": {"title": None, "labelColor": "#8fa3b5", "gridColor": "#243241",
+        {"data": {"values": df.to_dict("records")}, "mark": {"type": "area", "interpolate": "monotone", "color": T["chart_area"], "opacity": 0.85},
+         "encoding": {"x": {"field": "ply", "type": "quantitative", "axis": {"title": None, "labelColor": T["muted"], "gridColor": T["line"],
                                                                                 "labelExpr": "ceil(datum.value / 2)", "tickMinStep": 2}},
-                      "y": {"field": "wp", "type": "quantitative", "scale": {"domain": [0, 100]}, "axis": {"title": None, "labelColor": "#8fa3b5", "gridColor": "#243241",
+                      "y": {"field": "wp", "type": "quantitative", "scale": {"domain": [0, 100]}, "axis": {"title": None, "labelColor": T["muted"], "gridColor": T["line"],
                                                                                                      "values": [0, 50, 100]}},
                       "y2": {"datum": 0}}},
-        {"data": {"values": [{"y": 50}]}, "mark": {"type": "rule", "color": "#8fa3b5", "strokeDash": [4, 4]}, "encoding": {"y": {"field": "y", "type": "quantitative"}}},
-        {"data": {"values": [{"x": ply}]}, "mark": {"type": "rule", "color": "#f6f669", "strokeWidth": 2}, "encoding": {"x": {"field": "x", "type": "quantitative"}}},
+        {"data": {"values": [{"y": 50}]}, "mark": {"type": "rule", "color": T["muted"], "strokeDash": [4, 4]}, "encoding": {"y": {"field": "y", "type": "quantitative"}}},
+        {"data": {"values": [{"x": ply}]}, "mark": {"type": "rule", "color": "#e6b800", "strokeWidth": 2}, "encoding": {"x": {"field": "x", "type": "quantitative"}}},
     ]
     if len(keys):
-        layers.append({"data": {"values": keys.to_dict("records")}, "mark": {"type": "point", "filled": True, "size": 110, "stroke": "#fff", "strokeWidth": 1.5},
+        layers.append({"data": {"values": keys.to_dict("records")}, "mark": {"type": "point", "filled": True, "size": 110, "stroke": T["text"], "strokeWidth": 1.5},
                        "encoding": {"x": {"field": "ply", "type": "quantitative"}, "y": {"field": "wp", "type": "quantitative"},
                                     "color": {"field": "color", "type": "nominal", "scale": None},
                                     "tooltip": [{"field": "label", "title": "Moment"}, {"field": "cls", "title": "Type"}]}})
@@ -208,7 +212,10 @@ def viewer(rev: GameReview):
         if badge and not badge[0]:
             badge = None
         wp = rev.evals[ply]["wp"] if rev.evals else 50.0
-        svg = board_svg(fen, m.uci if m else None, best, flipped, badge)
+        shown = ss.get("_shown")                            # the ply drawn last time: step by one and the piece glides there
+        slide = (m.uci, False) if (m and shown == ply - 1) else (rev.moves[ply].uci, True) if (shown == ply + 1 and ply < n) else None
+        ss["_shown"] = ply
+        svg = board_svg(fen, m.uci if m else None, best, flipped, badge, slide=slide)
         svg = svg.replace('width="520" height="520"', 'style="width:100%;height:auto"')
         st.markdown(f"<div class='boardwrap'><div style='display:flex;gap:12px;align-items:stretch'>{_eval_bar(wp, flipped)}"
                     f"<div style='flex:1;max-width:560px'>{svg}</div></div></div>", unsafe_allow_html=True)
@@ -263,8 +270,8 @@ def verdict(rev: GameReview):
         items = "".join(f"<li>{escape(x)}</li>" for x in v.get("went_wrong", []))
         st.markdown(f"<div class='card verdict'><h4>⚠️ What went wrong</h4><ul style='margin:0;padding-left:18px'>{items}</ul></div>", unsafe_allow_html=True)
     st.write("")
-    st.markdown(f"<div class='focus'><div style='color:#8fa3b5;font-size:12.5px;font-weight:800;letter-spacing:.6px'>FOCUS FOR YOUR NEXT GAME</div>"
-                f"<div class='f'>🎯 {escape(v.get('focus', ''))}</div><div style='margin-top:4px;color:#d5dde6'>{escape(v.get('focus_tip', ''))}</div>"
+    st.markdown(f"<div class='focus'><div class='k'>FOCUS FOR YOUR NEXT GAME</div>"
+                f"<div class='f'>🎯 {escape(v.get('focus', ''))}</div><div class='d'>{escape(v.get('focus_tip', ''))}</div>"
                 f"<span class='tag'>{escape(v.get('puzzle_trigger', ''))}</span> <span class='tag'>{escape(v.get('action_tag', ''))}</span></div>", unsafe_allow_html=True)
     if v.get("trends"):
         st.write("")

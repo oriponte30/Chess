@@ -10,10 +10,10 @@ from core import service
 from ui import sidebar
 from ui.features import FEATURES
 from ui.state import init_state
-from ui.styles import CSS
+from ui import theme
 
 st.set_page_config(page_title="Chess Coach", page_icon="♟️", layout="wide")
-st.markdown(CSS, unsafe_allow_html=True)
+theme.inject()
 init_state()
 if not st.session_state.get("_warm"):                  # launch Stockfish in the background while the page loads
     st.session_state["_warm"] = True
