@@ -7,6 +7,7 @@ from html import escape
 import chess
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from core import coach
 from core import review as rv
@@ -131,6 +132,35 @@ def _graph(rev: GameReview, ply: int):
     st.vega_lite_chart({"background": "transparent", "height": 150, "layer": layers, "config": {"view": {"stroke": None}}}, width="stretch")
 
 
+_KEYS_JS = """
+<script>
+(function () {
+  var doc;
+  try { doc = window.parent.document; } catch (e) { return; }
+  var w = window.parent;
+  if (w.__chessKeys) doc.removeEventListener("keydown", w.__chessKeys, true);
+  var map = {ArrowLeft: "nav_prev", ArrowRight: "nav_next", Home: "nav_first", End: "nav_last"};
+  w.__chessKeys = function (e) {
+    var key = map[e.key];
+    if (!key || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var t = e.target, tag = t && t.tagName ? t.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "textarea" || tag === "select" || (t && t.isContentEditable)) return;
+    var btn = doc.querySelector(".st-key-" + key + " button");
+    if (!btn) return;
+    e.preventDefault();
+    if (!btn.disabled) btn.click();
+  };
+  doc.addEventListener("keydown", w.__chessKeys, true);
+})();
+</script>
+"""
+
+
+def _keyboard_nav():
+    """Left/Right arrows step through the moves, Home/End jump to the start/end (clicks the nav buttons)."""
+    components.html(_KEYS_JS, height=0)
+
+
 @st.fragment
 def viewer(rev: GameReview):
     ss = st.session_state
@@ -161,8 +191,10 @@ def viewer(rev: GameReview):
         b5.button("◀ Previous key moment", key="nav_pk", on_click=_jump_key, args=(rev, -1), width="stretch", disabled=not rev.key_moments)
         b6.button("Next key moment ▶", key="nav_nk", on_click=_jump_key, args=(rev, 1), width="stretch", disabled=not rev.key_moments)
         t1, t2 = st.columns(2)
+        _keyboard_nav()
         t1.toggle("Show the best move", value=True, key="show_best")
         t2.toggle("Flip board", value=flipped, key="flip")
+        st.caption("Tip: use ← → on your keyboard to step through the moves (Home / End jump to the start / end).")
     with right:
         _move_card(rev, ply, bool(ss.get("show_best", True)))
         _graph(rev, ply)
