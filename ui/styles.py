@@ -12,6 +12,12 @@ CSS = """
 .block-container { padding-top: 4.2rem; max-width: 1240px; }
 h1, h2, h3, h4 { color: #fff !important; letter-spacing: -.01em; }
 
+/* ---- top navigation: bright, bold, with a clear active state */
+[data-testid="stTopNavLink"] { color: var(--text) !important; font-weight: 700 !important; font-size: 15px; border-radius: 10px; padding: 6px 14px; opacity: 1 !important; transition: background .15s ease; }
+[data-testid="stTopNavLink"] * { color: inherit !important; font-weight: inherit !important; }
+[data-testid="stTopNavLink"]:hover { background: var(--surface2); }
+[data-testid="stTopNavLink"][aria-current="page"] { background: rgba(127,166,80,.2); color: #fff !important; box-shadow: inset 0 0 0 1px rgba(127,166,80,.5); }
+
 /* ---- brand + page headers */
 .brand { display:flex; align-items:center; gap:10px; margin: 2px 0 10px; }
 .brand .logo { width:38px; height:38px; border-radius:12px; display:grid; place-items:center; font-size:22px;
