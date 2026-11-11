@@ -132,3 +132,72 @@ def test_insight_summaries():
     assert split["white"]["wins"] == 1 and split["black"]["losses"] == 1 and split["black"]["draws"] == 1
     table = insights.opening_table(rows, limit=1)
     assert len(table) == 1 and table[0]["opening"] == "Italian Game" and table[0]["games"] == 2 and table[0]["score"] == 50
+
+
+# ---------- the browser-side lessons: every position offers at least three lines
+def test_every_lesson_position_offers_three_lines():
+    from core import lesson_export as le
+    short = []
+    for t in library.LIBRARY:
+        data = le.export(t)
+        for i, n in enumerate(data["nodes"]):
+            if n["al"] >= 0:
+                continue
+            lines = data["lines"][i]
+            if len(lines) < 3:
+                b = chess.Board()
+                for u in _path(data["nodes"], i):
+                    b.push_uci(u)
+                short.append((t.slug, n["l"], b.legal_moves.count()))
+            assert all(l["first"] and l["text"] for l in lines)
+    # only positions with fewer than three legal moves (forced replies) may offer less
+    assert all(legal < 3 for _, _, legal in short), short
+
+
+def _path(nodes, i):
+    out = []
+    while i > 0:
+        out.append(nodes[i]["u"])
+        i = nodes[i]["p"]
+    return out[::-1]
+
+
+def test_lesson_export_is_consistent():
+    from core import lesson_export as le
+    d = le.export(library.get("vs-sicilian"))
+    assert d["slug"] == "vs-sicilian" and len(d["sections"]) >= 5 and d["nodes"][0]["p"] == -1
+    for s in d["sections"]:
+        assert 0 < s["start"] < len(d["nodes"])
+    for i, n in enumerate(d["nodes"]):
+        assert all(d["nodes"][c]["p"] == i for c in n["c"])
+        if n["u"]:                                                  # every move is legal from its parent's position
+            b = chess.Board()
+            for u in _path(d["nodes"], n["p"]):
+                b.push_uci(u)
+            assert chess.Move.from_uci(n["u"]) in b.legal_moves
+
+
+# ---------- puzzle results coming back from the page
+def test_puzzle_page_saves_each_result_once(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+    from pathlib import Path
+    t = AppTest.from_file(str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=60)
+    t.run()
+    t.switch_page("app_pages/puzzles.py").run()
+    assert not t.exception, t.exception
+    assert len(t.session_state["pz_queue"]) >= 20 and all(i in puzzles.by_id() for i in t.session_state["pz_queue"])
+
+
+# ---------- the browser scripts must at least parse
+def test_browser_scripts_parse(tmp_path):
+    import shutil
+    import subprocess
+    from ui import live
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    for mode in ("review", "puzzle", "lesson"):
+        f = tmp_path / f"{mode}.mjs"
+        f.write_text(live.source(mode))
+        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+        assert r.returncode == 0, (mode, r.stderr[:400])

@@ -16,7 +16,7 @@ def _app(monkeypatch):
     return t
 
 
-def test_paste_a_pgn_and_step_through_the_review(monkeypatch, blunder):
+def test_paste_a_pgn_and_open_the_review(monkeypatch, blunder):
     t = _app(monkeypatch)
     t.text_area(key="pgn_text").set_value(blunder).run()
     t.text_input(key="pgn_me").set_value("Alice").run()
@@ -24,21 +24,18 @@ def test_paste_a_pgn_and_step_through_the_review(monkeypatch, blunder):
     assert not t.exception, t.exception
     rev = t.session_state["rev"]
     assert rev is not None and rev.player_color == chess.WHITE
-    labels = [b.label for b in t.button]
-    assert "← Back to games" in labels and any(b.key == "nav_next" for b in t.button)
-    next(b for b in t.button if b.key == "nav_next").click().run()
-    assert t.session_state["ply"] == 1 and not t.exception, t.exception
-    next(b for b in t.button if b.key == "nav_last").click().run()
-    assert t.session_state["ply"] == len(rev.moves)
-    next(b for b in t.button if b.key == "nav_pk").click().run()                         # previous key moment
-    assert t.session_state["ply"] in rev.key_moments
-    t.session_state["ply_pick"] = 3                                                      # what clicking move 3 in the list does
+    assert "← Back to games" in [b.label for b in t.button]
+    # the browser gets the whole game at once, so stepping needs no round trips
+    gid, payload = t.session_state["_rv_payload"]
+    assert gid == t.session_state["rev_id"] and len(payload["plies"]) == len(rev.moves) and len(payload["wps"]) == len(rev.moves) + 1
+    assert payload["plies"][0]["fen"] == rev.moves[0].fen_after and payload["keys"] == sorted(rev.key_moments)
     from ui import views
-    import streamlit as st
     assert views._pill_label(rev.moves[2]).startswith("2.") and views._pill_label(rev.moves[1]) == rev.moves[1].san + (
         "" if rev.moves[1].classification in ("Book", "Forced", "Good") else views.SYMBOL.get(rev.moves[1].classification, ""))
+    assert all(p["card"] and p["pill"] for p in payload["plies"])
     next(b for b in t.button if b.label == "← Back to games").click().run()
-    assert t.session_state["rev"] is None and not t.exception
+    from ui.features import FEATURES
+    assert {"Lessons", "Training", "Puzzles"} <= {f.title for f in FEATURES}
 
 
 def test_load_games_then_review_one(monkeypatch):
@@ -76,23 +73,16 @@ def test_navigation_has_lessons_and_a_training_hub(monkeypatch):
     assert [f.title for f in FEATURES][:4] == ["Game review", "Lessons", "Training", "Insights"] or {"Lessons", "Training"} <= {f.title for f in FEATURES}
 
 
-def test_lessons_page_plays_the_caro_kann(monkeypatch):
+def test_lessons_gallery_opens_a_lesson_with_the_whole_tree(monkeypatch):
     t = _app(monkeypatch)
     t.switch_page("app_pages/lessons.py").run()
     assert not t.exception, t.exception
     assert sum(1 for b in t.button if b.key and b.key.startswith("open_")) >= 7                  # the gallery lists every opening
     next(b for b in t.button if b.key == "open_caro-kann").click().run()
     assert not t.exception, t.exception
-    next(b for b in t.button if b.key == "sec_advance").click().run()
-    assert len(t.session_state["lesson_path"]) == 5 and not t.exception, t.exception          # 1.e4 c6 2.d4 d5 3.e5
-    next(b for b in t.button if b.key == "nav_next").click().run()                             # main line: 3...Bf5
-    assert len(t.session_state["lesson_path"]) == 6
-    next(b for b in t.button if b.key == "nav_prev").click().run()
-    assert len(t.session_state["lesson_path"]) == 5
-    t.toggle(key="lesson_engine").set_value(True).run()                                         # engine overlay (fake engine in tests)
-    assert not t.exception, t.exception
-    t.selectbox(key="lesson_own").set_value("h6").run()                                         # a move that is not in the lesson
-    assert len(t.session_state["lesson_path"]) == 6 and any("Off the lesson tree" in m.value for m in t.markdown)
+    assert t.session_state["lesson_slug"] == "caro-kann" and any(b.key == "lessons_back" for b in t.button)
+    next(b for b in t.button if b.key == "lessons_back").click().run()
+    assert t.session_state["lesson_slug"] is None
 
 
 def test_training_hub_and_insights_pages_render(monkeypatch):

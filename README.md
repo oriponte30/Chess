@@ -50,6 +50,19 @@ streamlit run app.py
 3. Reviews are saved in SQLite (`data/coach.db`). On Streamlit Cloud that file resets when the app restarts, so it works as a cache; for
    permanent history point `core/store.py` at Postgres (the schema is plain SQL).
 
+## Smooth play, always-on, three lines everywhere
+- **Instant boards.** The Review, Puzzles and Lessons boards run in the browser (`ui/assets/*.js`, with chess.js bundled in `ui/assets/chess.bundle.js`).
+  Stepping through a game, dragging a piece, the eval bar, the graph, the move list, puzzle checking and the opponent's reply never wait for the
+  server (about 3 ms per step). The server is only asked for Stockfish's lines, to save puzzle results and to pick what comes next.
+  Arrow keys, Home and End work in all three. Pieces slide, wrong puzzle moves shake the board and solved ones glow.
+- **Three lines from every position.** Each lesson position shows at least three lines to follow: the lesson's own lines first, then Stockfish's
+  alternatives, marked with 🤖, for positions where the lesson has fewer. Only positions with fewer than three legal moves (a forced reply) can show less.
+  Off the lesson tree the engine's top three are shown. Rebuild after editing a lesson with `python scripts/build_lesson_extras.py`.
+- **Keep it awake.** Streamlit Community Cloud sleeps an app after about 12 hours without a visitor. `.github/workflows/keepalive.yml` opens the app in a
+  headless browser every 6 hours and presses the wake-up button if it has already slept. One-time setup: in your GitHub repo go to
+  *Settings → Secrets and variables → Actions → Variables* and add `APP_URL` = `https://<your-app>.streamlit.app`, then run the workflow once from the
+  *Actions* tab. (GitHub pauses scheduled workflows in a repo with no activity for 60 days; re-enable it from the Actions tab if that happens.)
+
 ## What's new
 - **Seven opening courses** (Lessons): Italian, Vienna, London, Queen's Gambit, Caro-Kann, Sicilian (Black) and *Playing against the Sicilian*
   (Open, Rossolimo, Alapin, Grand Prix/closed, Smith-Morra). Each has several variations, each checked move by move with Stockfish
@@ -81,10 +94,14 @@ core/engine.py      Stockfish over UCI (a pool of engines that split a game's po
 core/review.py      win probability, labels, accuracy, key moments
 core/coach.py       explanations, verdict, trends, puzzle tags
 core/lessons.py     the variation-tree engine for lessons (python-chess + Stockfish checked)
+core/lesson_export.py  a lesson as data for the browser, with at least three lines per position
+data/lesson_extra.json Stockfish's extra lines for positions the lessons cover thinly (scripts/build_lesson_extras.py)
 core/lesson_data/   one file per opening course; core/library.py lists them
 core/puzzles.py     puzzle loading, levels, judging; data/puzzles.json is the generated set
 core/background.py  worker threads that read your recent games ahead of time
 ui/remember.py      the remember-me cookie
+ui/live.py          loads the browser components; ui/assets/ holds chess.js, the shared board toolkit and one script each for review, puzzles and lessons
+scripts/keep_awake.py  what the keep-alive workflow runs
 core/insights.py    turns stored reviews into coach notes and focus areas
 core/store.py       SQLite storage (reviews, per-move facts, history) and store.move_facts() for cross-game features
 core/service.py     one call: cache -> engine -> coach -> store

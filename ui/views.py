@@ -16,6 +16,7 @@ from core.review import COLOR, SYMBOL, GameReview
 from . import theme
 from .board import board_svg
 from .chessboard import board_component
+from . import live
 from .enginelines import arrows as engine_arrows, panel_html, top_lines
 
 BAD = ("Inaccuracy", "Mistake", "Blunder", "Missed Win")
@@ -208,112 +209,62 @@ def keyboard_nav():
             components.html(_KEYS_JS, height=0)
 
 
+def _card_html(rev: GameReview, ply: int) -> str:
+    """The text card for a move (or the start of the game), as the browser will show it."""
+    if ply == 0:
+        return f"<div class='mc' style='border-color:var(--muted)'><div class='t'>Start of the game</div><div class='e'>{escape(rev.summary)}</div></div>"
+    m = rev.moves[ply - 1]
+    col = COLOR[m.classification]
+    best = ""
+    if m.classification in BAD or (m.classification in ("Good",) and m.loss > 3):
+        if m.best_san and m.best_san != m.san:
+            best = f"<div class='w'>Engine's choice: <b>{escape(m.best_san)}</b> (green arrow)</div>"
+    return (f"<div class='mc' style='border-color:{col}'><div class='t'>{escape(move_label(m))}<i style='color:{col}'>{m.classification}</i></div>"
+            f"<div class='e'>{escape(m.explanation)}</div>{best}</div>")
+
+
+def review_payload(rev: GameReview, game_id: str) -> dict:
+    """Everything the browser needs to step through a game without asking the server again."""
+    T = theme.tokens()
+    plies = []
+    for m in rev.moves:
+        shows_badge = m.classification not in ("Book", "Forced", "Good") and SYMBOL.get(m.classification)
+        plies.append({"uci": m.uci, "from": m.uci[:2], "to": m.uci[2:4], "san": m.san, "fen": m.fen_after, "cls": m.classification,
+                      "sym": SYMBOL.get(m.classification) if shows_badge else "", "color": COLOR[m.classification],
+                      "best": m.best_uci if (m.classification in BAD and m.best_uci and m.best_uci != m.uci) else "",
+                      "card": _card_html(rev, m.ply), "pill": _pill_label(m)})
+    wps = [round(e["wp"], 1) for e in rev.evals] if rev.evals else [50.0] * (len(rev.moves) + 1)
+    keys = sorted(k for k in rev.key_moments if 0 < k <= len(rev.moves))
+    return {"id": game_id, "startFen": chess.STARTING_FEN, "startCard": _card_html(rev, 0), "plies": plies, "wps": wps, "keys": keys,
+            "keyDots": [{"ply": k, "color": COLOR[rev.moves[k - 1].classification]} for k in keys],
+            "flipped": rev.player_color == chess.BLACK, "start": 0,
+            "colors": {"area": T["chart_area"], "muted": T["muted"], "line": T["line"], "text": T["text"]}}
+
+
+def engine_reply(fen: str) -> dict:
+    top = top_lines(fen)
+    return {"fen": fen, "lines": [{"eval": t["eval"], "tone": t["tone"], "line": t["line"], "first": t["first"], "wp": t["wp"]} for t in top]}
+
+
 @st.fragment
 def viewer(rev: GameReview):
+    """The interactive board, move card, graph and move list. It all runs in the browser (ui/assets/review.js); the server only answers
+    when the page asks for Stockfish's lines for a position."""
     ss = st.session_state
-    n = len(rev.moves)
-    ply = max(0, min(n, ss.get("ply", 0)))
-    ss.ply = ply
-    flipped = bool(ss.get("flip", rev.player_color == chess.BLACK))
-    if ss.get("_explore_ply") != ply:                    # a different game position: forget the side line
-        ss["explore"] = []
-    ss["_explore_ply"] = ply
-    line = list(ss.get("explore", []))                  # your own moves played on the board from this position
-    left, right = st.columns([1.25, 1], gap="large")
-    m = rev.moves[ply - 1] if ply else None
-    with left:
-        base_fen = m.fen_after if m else chess.STARTING_FEN
-        board = chess.Board(base_fen)
-        for u in line:
-            board.push_uci(u)
-        exploring = bool(line)
-        fen = board.fen()
-        show_best = bool(ss.get("show_best", True))
-        show_eng = bool(ss.get("show_engine", False))
-        top, engine_error = [], ""
-        if (show_eng or exploring) and not board.is_game_over():
-            try:
-                top = top_lines(fen)
-            except FileNotFoundError as e:
-                engine_error = str(e)
-        best, more = None, []
-        if top:
-            best, more = engine_arrows(top)
-        elif not exploring and m and show_best and m.classification in BAD and m.best_uci != m.uci:
-            best = m.best_uci
-        badge = None if exploring else ((SYMBOL.get(m.classification) or "", COLOR[m.classification]) if m and m.classification not in ("Book", "Forced", "Good") else None)
-        if badge and not badge[0]:
-            badge = None
-        if exploring:
-            wp = top[0]["wp"] if top else 50.0
-            last = line[-1]
-        else:
-            wp = rev.evals[ply]["wp"] if rev.evals else 50.0
-            last = m.uci if m else None
-        # the piece glides: one step through the game, or one move on a side line
-        shown = ss.get("_shown")
-        slide = None
-        if shown is not None:
-            sp, sl = shown
-            if exploring and sp == ply and tuple(sl) == tuple(line[:-1]):
-                slide = (line[-1], False)
-            elif not exploring and sp == ply and len(sl) == 1 and not line:
-                slide = (sl[-1], True)
-            elif not exploring and not line and sp == ply - 1 and not sl and m:
-                slide = (m.uci, False)
-            elif not exploring and not line and sp == ply + 1 and not sl and ply < n:
-                slide = (rev.moves[ply].uci, True)
-        ss["_shown"] = (ply, list(line))
-        svg = board_svg(fen, last, best, flipped, badge, slide=slide, extra_arrows=more)
-        svg = svg.replace('width="520" height="520"', 'style="width:100%;height:auto"')
-        html = (f"<div class='boardwrap'><div style='display:flex;gap:12px;align-items:stretch'>{_eval_bar(wp, flipped)}"
-                f"<div style='flex:1;max-width:560px'>{svg}</div></div></div>")
-        made = board_component(f"review_board_{ply}_{len(line)}", fen, html, flipped)
-        if made:                                          # you moved a piece on the board: carry on from there
-            ss["explore"] = line + [made]
-            st.rerun(scope="fragment")
-        b1, b2, b3, b4 = st.columns(4)
-        b1.button("⏮", key="nav_first", on_click=_set_ply, args=(0, n), width="stretch", help="Start")
-        if exploring:
-            b2.button("◀", key="nav_prev", on_click=_explore_back, width="stretch", help="Take back your move")
-            b3.button("↩ Game", key="nav_next", on_click=_explore_reset, width="stretch", help="Back to the game moves")
-        else:
-            b2.button("◀", key="nav_prev", on_click=_set_ply, args=(ply - 1, n), width="stretch", disabled=ply <= 0, help="Previous move")
-            b3.button("▶", key="nav_next", on_click=_set_ply, args=(ply + 1, n), width="stretch", disabled=ply >= n, help="Next move")
-        b4.button("⏭", key="nav_last", on_click=_set_ply, args=(n, n), width="stretch", help="End")
-        b5, b6 = st.columns(2)
-        b5.button("◀ Previous key moment", key="nav_pk", on_click=_jump_key, args=(rev, -1), width="stretch", disabled=not rev.key_moments)
-        b6.button("Next key moment ▶", key="nav_nk", on_click=_jump_key, args=(rev, 1), width="stretch", disabled=not rev.key_moments)
-        t1, t2, t3 = st.columns(3)
-        t1.toggle("Best move", value=True, key="show_best")
-        t2.toggle("Engine top 3", key="show_engine", help="Stockfish's three best moves for the position on the board")
-        t3.toggle("Flip board", value=flipped, key="flip")
-        st.caption("Click a piece to see where it can go, then click a square to try your own move. ← → step through the game · Home / End jump to the start / end")
-    with right:
-        if exploring:
-            sans, b = [], chess.Board(base_fen)
-            for u in line:
-                mv = chess.Move.from_uci(u)
-                no = f"{b.fullmove_number}." if b.turn == chess.WHITE else (f"{b.fullmove_number}..." if not sans else "")
-                sans.append(f"{no}{b.san(mv)}".strip())
-                b.push(mv)
-            st.markdown("<div class='mc' style='border-color:var(--accent)'><div class='t'>Your own line<i style='color:var(--accent)'>exploring</i></div>"
-                        f"<div class='e'>{escape(' '.join(sans))}<br>This is your own variation, not the game. Use ◀ to take a move back or <b>↩ Game</b> to return.</div></div>",
-                        unsafe_allow_html=True)
-        else:
-            _move_card(rev, ply, bool(ss.get("show_best", True)))
-        if top:
-            st.markdown(panel_html(top), unsafe_allow_html=True)
-        elif engine_error:
-            st.warning(engine_error)
-        elif (show_eng or exploring) and board.is_game_over():
-            st.info("The game is over in this position.")
-        _graph(rev, ply)
-        labels = {mm.ply: _pill_label(mm) for mm in rev.moves}
-        ss.ply_pick = ply or None                          # keep the list in step with the board and the arrow keys
-        with st.container(height=330, key="movelist"):
-            st.pills("Moves", list(labels), format_func=labels.get, selection_mode="single", key="ply_pick",
-                     on_change=_pick_ply, args=(n,), label_visibility="collapsed")
+    gid = ss.get("rev_id") or "game"
+    cache = ss.get("_rv_payload")
+    if not cache or cache[0] != gid:
+        cache = ss["_rv_payload"] = (gid, review_payload(rev, gid))
+    eng = ss.get("_rv_engine")
+    err = ss.get("_rv_engine_err", "")
+    res = live.run("review", f"rv_{gid}", {**cache[1], "engine": eng, "engine_error": err}, "engine")
+    fen = getattr(res, "engine", None)
+    if fen and live.valid_fen(fen) and (not eng or eng.get("fen") != fen):
+        try:
+            ss["_rv_engine"], ss["_rv_engine_err"] = engine_reply(str(fen)), ""
+        except FileNotFoundError as e:
+            ss["_rv_engine_err"] = str(e)
+        st.rerun(scope="fragment")
 
 
 # --------------------------------------------------------------------------------------------------------------------

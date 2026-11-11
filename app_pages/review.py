@@ -49,7 +49,6 @@ if ss.rev is not None:
     st.button("← Back to games", on_click=close_review)
     views.game_header(rev)
     st.write("")
-    _ = views.keyboard_nav()
     views.viewer(rev)
     st.write("")
     views.accuracy_and_counts(rev)
