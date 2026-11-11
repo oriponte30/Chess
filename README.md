@@ -50,6 +50,20 @@ streamlit run app.py
 3. Reviews are saved in SQLite (`data/coach.db`). On Streamlit Cloud that file resets when the app restarts, so it works as a cache; for
    permanent history point `core/store.py` at Postgres (the schema is plain SQL).
 
+## What's new
+- **Seven opening courses** (Lessons): Italian, Vienna, London, Queen's Gambit, Caro-Kann, Sicilian (Black) and *Playing against the Sicilian*
+  (Open, Rossolimo, Alapin, Grand Prix/closed, Smith-Morra). Each has several variations, each checked move by move with Stockfish
+  (`python scripts/check_lessons.py`). Add one by writing a `core/lesson_data/<name>.py` and listing it in `core/library.py`.
+- **Puzzles**: ~360 Stockfish-verified puzzles in four levels (Beginner to Expert) with themes, a streak, 2-step hints and progress that is saved
+  per player. Rebuild or grow the set with `scripts/build_puzzles.py find ...` then `merge ... --out data/puzzles.json`.
+- **Remember me**: a one-year cookie (`cc_prefs`: username, depth, number of games) reloads your games on your next visit. "Not you? Forget me" clears it.
+- **Reads your games before you ask**: after loading, a background worker analyses your last 5-40 games (capped at depth 14) while you browse.
+  Insights fills in as they finish and shows results by colour and the openings you meet. Games are marked in "My games" when done.
+- **Faster and nicer UI**: animated cards and bars, reduced-motion respected, cached CSS and board pictures, per-game locks so nothing is analysed twice.
+
+> Streamlit Community Cloud keeps its SQLite file only until the app restarts, so saved reviews and puzzle progress can reset after a reboot.
+> The cookie still brings you back; the background reader simply re-analyses. Use Postgres storage if you need it permanent.
+
 ## Tests
 `python -m pytest -q`. They use a scripted material-only engine, so they run anywhere; one extra test uses a real Stockfish if present.
 
@@ -66,7 +80,11 @@ core/chesscom.py    chess.com API client
 core/engine.py      Stockfish over UCI (a pool of engines that split a game's positions between them)
 core/review.py      win probability, labels, accuracy, key moments
 core/coach.py       explanations, verdict, trends, puzzle tags
-core/lessons.py     opening lessons as a variation tree (Caro-Kann included), verified with python-chess and Stockfish
+core/lessons.py     the variation-tree engine for lessons (python-chess + Stockfish checked)
+core/lesson_data/   one file per opening course; core/library.py lists them
+core/puzzles.py     puzzle loading, levels, judging; data/puzzles.json is the generated set
+core/background.py  worker threads that read your recent games ahead of time
+ui/remember.py      the remember-me cookie
 core/insights.py    turns stored reviews into coach notes and focus areas
 core/store.py       SQLite storage (reviews, per-move facts, history) and store.move_facts() for cross-game features
 core/service.py     one call: cache -> engine -> coach -> store

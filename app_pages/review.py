@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core import coach, service, store
+from core import background, coach, service, store
 from ui import views
 from ui.state import depth as current_depth, username as current_user
 
@@ -64,8 +64,21 @@ if ss.rev is not None:
 # ---- game picker ---------------------------------------------------------------------------------------------------
 st.markdown("<div class='pagehead'><h1>Game review</h1><p>Brilliant moves, blunders and what to practise next, free, powered by Stockfish.</p></div>",
             unsafe_allow_html=True)
-tab_games, tab_pgn = st.tabs(["📋 My games", "📝 Paste a PGN"])
-with tab_games:
+def bg_banner(job) -> str:
+    """A thin progress strip while the coach reads the loaded games in the background."""
+    if job is None or not job.total or not job.running:
+        return ""
+    return (f"<div class='bgbar'><div class='t'><span class='pulse'></span>The coach is reading your games in the background: <b>{job.done} of {job.total}</b> done. "
+            f"Games marked ✓ open instantly, and the <b>Insights</b> tab fills up as they finish.</div>"
+            f"<div class='tr'><div class='fl' style='width:{job.fraction * 100:.0f}%'></div></div></div>")
+
+
+def games_panel(watching: bool):
+    """The 'My games' list. While the background analysis runs this redraws itself every few seconds, so the ✓ marks appear as games finish."""
+    job = background.status(current_user())
+    banner = bg_banner(job)
+    if banner:
+        st.markdown(banner, unsafe_allow_html=True)
     if ss.games is None:
         st.info("Type your chess.com username in the sidebar and press **Load my games**.")
     elif not ss.games:
@@ -77,6 +90,15 @@ with tab_games:
         clicked = views.games_list(ss.games, reviewed, depth)
         if clicked is not None:
             open_review(clicked.game_id, clicked.pgn, current_user(), depth)
+    if watching and not (job and job.running):                  # the analysis just finished: redraw once without the auto-refresh
+        st.rerun()
+
+
+tab_games, tab_pgn = st.tabs(["📋 My games", "📝 Paste a PGN"])
+with tab_games:
+    _job = background.status(current_user())
+    _running = bool(_job and _job.running)
+    st.fragment(run_every=3 if _running else None)(games_panel)(_running)
 
 with tab_pgn:
     st.caption("Any game works: paste a PGN from chess.com (Share → PGN), Lichess or anywhere else.")

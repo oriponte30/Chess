@@ -80,6 +80,9 @@ def test_lessons_page_plays_the_caro_kann(monkeypatch):
     t = _app(monkeypatch)
     t.switch_page("app_pages/lessons.py").run()
     assert not t.exception, t.exception
+    assert sum(1 for b in t.button if b.key and b.key.startswith("open_")) >= 7                  # the gallery lists every opening
+    next(b for b in t.button if b.key == "open_caro-kann").click().run()
+    assert not t.exception, t.exception
     next(b for b in t.button if b.key == "sec_advance").click().run()
     assert len(t.session_state["lesson_path"]) == 5 and not t.exception, t.exception          # 1.e4 c6 2.d4 d5 3.e5
     next(b for b in t.button if b.key == "nav_next").click().run()                             # main line: 3...Bf5

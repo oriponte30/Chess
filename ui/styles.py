@@ -1,6 +1,8 @@
 """All CSS in one place. Every colour is a design token (a CSS variable) and there are two token sets, so the app reads well on
 Streamlit's light theme and its dark theme. `css(mode)` picks the set; ui/theme.py works out the mode."""
 
+from functools import lru_cache
+
 TOKENS = {
     "dark": {
         "bg": "#0b1118", "bg2": "#111b26", "glow": "#1a2a36", "surface": "rgba(255,255,255,.055)", "surface2": "rgba(255,255,255,.10)",
@@ -149,11 +151,76 @@ div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient
 .eng .ev.pos { color: var(--win); } .eng .ev.neg { color: var(--loss); }
 .crumbs { display:flex; flex-wrap:wrap; gap:6px; margin: 2px 0 10px; } .crumbs span { font-weight:800; font-size:13.5px; padding:2px 9px; border-radius:8px; background: var(--surface2); color: var(--text); }
 .crumbs span.cur { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* ---- motion and polish */
+@keyframes rise { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes pagein { from { opacity:0; } to { opacity:1; } }
+@keyframes pulsering { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-6px); } 40%, 60% { transform: translateX(6px); } }
+@keyframes winglow { 0% { box-shadow: 0 0 0 0 rgba(127,166,80,0); } 40% { box-shadow: 0 0 0 6px rgba(127,166,80,.45), 0 0 44px rgba(127,166,80,.5); } 100% { box-shadow: 0 0 0 2px rgba(127,166,80,.55), 0 0 26px rgba(127,166,80,.25); } }
+@keyframes hintglow { 0%, 100% { opacity:.3; } 50% { opacity:.95; } }
+@keyframes hintin { from { opacity:0; transform: scale(.55); } to { opacity:1; transform: scale(1); } }
+@keyframes sheen { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+[data-testid="stMain"] .block-container { animation: pagein .25s ease both; }
+.card, .glass, .hub, .opc, .lvl, .km, .note, .strip .s, .mc, .bgbar, .welcome { animation: rise .32s cubic-bezier(.22,1,.36,1) both; }
+[data-testid="stColumn"]:nth-child(2) > div { animation-delay: .04s; } [data-testid="stColumn"]:nth-child(3) > div { animation-delay: .08s; }
+[data-testid="stColumn"]:nth-child(4) > div { animation-delay: .12s; } [data-testid="stColumn"]:nth-child(5) > div { animation-delay: .16s; }
+.glass::before { background-size: 200% 100%; animation: sheen 6s linear infinite; }
+div[data-testid="stButton"] button:hover:not(:disabled), div[data-testid="stDownloadButton"] button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 20px var(--shadow); }
+div[data-testid="stButton"] button[kind="primary"]:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 10px 24px rgba(127,166,80,.42); }
+div[data-testid="stButton"] button:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.stTabs [data-baseweb="tab"] { transition: color .15s ease, background .15s ease; }
+.cb-hint { animation: hintin .14s ease-out both; transform-box: fill-box; transform-origin: center; }
+.hintpulse { animation: hintglow 1.1s ease-in-out infinite; }
+
+/* ---- opening gallery */
+.opc { border:1px solid var(--line); border-radius: 22px; padding: 18px 20px 14px; background: var(--glass); backdrop-filter: blur(12px); box-shadow: 0 10px 28px var(--shadow);
+  min-height: 196px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.opc .i { font-size: 30px; display:inline-block; transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
+.opc .h { font-weight: 900; color: var(--text); font-size: 19px; margin: 6px 0 4px; } .opc .x { color: var(--body); font-size: 14.5px; line-height: 1.5; min-height: 66px; }
+.opc .m { margin-top: 10px; display:flex; flex-wrap:wrap; gap:6px; } .opc .chip { margin-right: 0; }
+[class*="st-key-op_"]:hover .opc { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 65%, transparent); box-shadow: 0 16px 38px var(--shadow); }
+[class*="st-key-op_"]:hover .opc .i { transform: scale(1.18) rotate(-6deg); }
+
+/* ---- puzzles */
+.lvl { border:1px solid var(--line); border-radius: 18px; padding: 12px 14px 10px; background: var(--surface); min-height: 142px; transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.lvl.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, 0 8px 24px color-mix(in srgb, var(--accent) 28%, transparent); }
+.lvl .i { font-size: 22px; } .lvl .h { font-weight: 900; color: var(--text); font-size: 16px; } .lvl .x { color: var(--muted); font-size: 12.5px; line-height: 1.35; min-height: 34px; }
+.lvl .bar { height: 6px; border-radius: 99px; background: var(--ring_bg); overflow: hidden; margin: 8px 0 4px; }
+.lvl .bar div { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #7fa650, #4cc3b0); transition: width .6s ease; }
+.lvl .n { font-size: 12px; color: var(--muted); font-weight: 700; }
+.dots { display:flex; gap: 6px; margin: 8px 0 4px; } .dots span { width: 28px; height: 7px; border-radius: 99px; background: var(--ring_bg); transition: background .3s ease; }
+.dots span.ok { background: var(--win); } .dots span.now { background: var(--accent); animation: pulsering 1.6s infinite; }
+.pzcard .m { margin-top: 6px; display:flex; flex-wrap:wrap; gap:6px; } .pzcard .chip { margin-right: 0; }
+.pzcard.solved { border-color: color-mix(in srgb, var(--win) 70%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--win) 14%, transparent), transparent), var(--surface); }
+.chip.lv1 { background: color-mix(in srgb, #7fa650 26%, transparent); } .chip.lv2 { background: color-mix(in srgb, #4cc3b0 26%, transparent); }
+.chip.lv3 { background: color-mix(in srgb, #e6a23c 28%, transparent); } .chip.lv4 { background: color-mix(in srgb, #d9534f 26%, transparent); }
+.boardwrap { transition: box-shadow .3s ease, border-color .3s ease; }
+.boardwrap.shake { animation: shake .45s cubic-bezier(.36,.07,.19,.97) both; border-color: var(--loss); }
+.boardwrap.glow { animation: winglow 1.1s ease-out both; border-color: var(--win); }
+
+/* ---- background analysis, welcome, openings table */
+.bgbar { border:1px solid var(--line); border-radius: 16px; padding: 12px 16px; margin: 0 0 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent), var(--surface); }
+.bgbar .t { color: var(--body); font-size: 14px; display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+.bgbar .tr { height: 6px; border-radius: 99px; background: var(--ring_bg); overflow: hidden; margin-top: 9px; }
+.bgbar .fl { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #7fa650, #4cc3b0, #6c8cff, #4cc3b0, #7fa650); background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite; transition: width .6s ease; }
+.pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); display:inline-block; animation: pulsering 1.4s infinite; flex: none; }
+.welcome { padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text); font-size: 14px; margin: 0 0 8px; }
+.opn { display:grid; grid-template-columns: 1fr 120px; gap: 12px; align-items:center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.opn:last-child { border-bottom: 0; } .opn .n { font-weight: 800; color: var(--text); font-size: 14px; } .opn small { display:block; color: var(--muted); font-weight: 600; font-size: 12px; }
+.wdl { display:flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--ring_bg); } .wdl i { display:block; height: 100%; transition: width .5s ease; }
+.wdl .w { background: var(--win); } .wdl .d { background: var(--draw); } .wdl .l { background: var(--loss); }
+.st-key-remembersync { height: 0; overflow: hidden; margin: 0; padding: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 760px) { .block-container { padding-left: 1rem; padding-right: 1rem; } .acc { flex-direction:column; align-items:flex-start; } }
 </style>
 """
 
 
+@lru_cache(maxsize=4)
 def css(mode: str = "dark") -> str:
     tok = TOKENS.get(mode, TOKENS["dark"])
     return _BASE.replace("__VARS__", " ".join(f"--{k}: {v};" for k, v in tok.items()))

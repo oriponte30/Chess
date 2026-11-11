@@ -54,26 +54,37 @@ def pgn_id(pgn: str) -> str:
     return "pgn" + hashlib.sha1(moves.encode()).hexdigest()[:14]
 
 
+_game_locks: dict = {}
+_game_locks_guard = threading.Lock()
+
+
+def _lock_for(game_id: str) -> threading.Lock:
+    """One lock per game: if the background analysis is busy with a game and you open that same game, you wait for it instead of analysing it twice."""
+    with _game_locks_guard:
+        return _game_locks.setdefault(game_id, threading.Lock())
+
+
 def review_game(pgn: str, depth: int = 14, username: str = "", game_id: str | None = None, progress=None,
                 use_cache: bool = True) -> rv.GameReview:
-    """Review one game (PGN text). Returns the stored review when it already exists at this depth."""
+    """Review one game (PGN text). Returns the stored review when it already exists at this depth (or a deeper one)."""
     gid = game_id or pgn_id(pgn)
-    if use_cache:
-        hit = store.load_review(gid, depth)
-        if hit is not None:
-            return hit
-    game = chesscom.game_from_pgn(pgn)
-    try:
-        with make_engine() as eng:
-            rev = rv.analyze_game(game, eng, depth=depth, progress=progress, player=username or None)
-    except (chess.engine.EngineError, BrokenPipeError):          # an engine process died: start a fresh pool and try once more
-        reset_engine()
-        with make_engine() as eng:
-            rev = rv.analyze_game(chesscom.game_from_pgn(pgn), eng, depth=depth, progress=progress, player=username or None)
-    history = store.recent_history(username, exclude=gid) if username else []
-    coach.annotate(rev, history=history)
-    store.save_review(gid, depth, rev, username=username, fingerprint=coach.history_entry(rev) if rev.player_color is not None else None)
-    return rev
+    with _lock_for(gid):
+        if use_cache:
+            hit = store.load_review(gid, depth, at_least=True)        # a deeper review is just as good as the one that was asked for
+            if hit is not None:
+                return hit
+        game = chesscom.game_from_pgn(pgn)
+        try:
+            with make_engine() as eng:
+                rev = rv.analyze_game(game, eng, depth=depth, progress=progress, player=username or None)
+        except (chess.engine.EngineError, BrokenPipeError):          # an engine process died: start a fresh pool and try once more
+            reset_engine()
+            with make_engine() as eng:
+                rev = rv.analyze_game(chesscom.game_from_pgn(pgn), eng, depth=depth, progress=progress, player=username or None)
+        history = store.recent_history(username, exclude=gid) if username else []
+        coach.annotate(rev, history=history)
+        store.save_review(gid, depth, rev, username=username, fingerprint=coach.history_entry(rev) if rev.player_color is not None else None)
+        return rev
 
 
 def warm_up() -> None:

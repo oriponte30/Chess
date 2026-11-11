@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS history (
     game_id TEXT NOT NULL, username TEXT NOT NULL, reviewed INTEGER NOT NULL, entry TEXT NOT NULL,
     PRIMARY KEY (game_id, username)
 );
+CREATE TABLE IF NOT EXISTS puzzle_results (
+    username TEXT NOT NULL, puzzle_id TEXT NOT NULL, solved INTEGER NOT NULL, attempts INTEGER NOT NULL, updated INTEGER NOT NULL,
+    PRIMARY KEY (username, puzzle_id)
+);
 """
 
 
@@ -63,9 +67,13 @@ def save_review(game_id: str, depth: int, rev: GameReview, username: str = "", f
             c.execute("INSERT OR REPLACE INTO history VALUES (?,?,?,?)", (game_id, username.lower(), now, json.dumps(fingerprint)))
 
 
-def load_review(game_id: str, depth: int) -> GameReview | None:
+def load_review(game_id: str, depth: int, at_least: bool = False) -> GameReview | None:
+    """The stored review of this game. With at_least=True a deeper review also counts (the shallowest one that is deep enough is returned)."""
     with _conn() as c:
-        row = c.execute("SELECT payload FROM reviews WHERE game_id=? AND depth=?", (game_id, depth)).fetchone()
+        if at_least:
+            row = c.execute("SELECT payload FROM reviews WHERE game_id=? AND depth>=? ORDER BY depth ASC LIMIT 1", (game_id, depth)).fetchone()
+        else:
+            row = c.execute("SELECT payload FROM reviews WHERE game_id=? AND depth=?", (game_id, depth)).fetchone()
     return GameReview.from_dict(json.loads(row[0])) if row else None
 
 
@@ -84,7 +92,7 @@ def recent_history(username: str, limit: int = 10, exclude: str | None = None) -
     return [json.loads(e) for g, e in rows if g != exclude][:limit]
 
 
-def move_facts(username: str, limit_games: int = 200) -> list:
+def move_facts(username: str, limit_games: int = 200, game_ids: set | None = None) -> list:
     """Per-move rows (dicts) for the user's reviewed games, newest games first (player_color says which side the user played: 1 white, 0 black). The building block for stats, training and any other
     feature that wants to look across games instead of at one."""
     with _conn() as c:
@@ -95,10 +103,10 @@ def move_facts(username: str, limit_games: int = 200) -> list:
             "FROM move_facts f JOIN reviews r ON r.game_id = f.game_id AND r.depth = f.depth "
             "WHERE r.username = ? AND r.game_id IN (SELECT game_id FROM reviews WHERE username = ? ORDER BY reviewed DESC LIMIT ?) "
             "ORDER BY r.reviewed DESC, f.game_id, f.ply", (username.lower(), username.lower(), limit_games)).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows if game_ids is None or r["game_id"] in game_ids]
 
 
-def review_rows(username: str, limit: int = 60) -> list:
+def review_rows(username: str, limit: int = 60, game_ids: set | None = None) -> list:
     """One row per reviewed game (newest first, deepest review kept): who the user was, their accuracy, the opening and the result."""
     with _conn() as c:
         rows = c.execute(
@@ -111,15 +119,17 @@ def review_rows(username: str, limit: int = 60) -> list:
         if gid in seen:
             continue
         seen.add(gid)
+        if game_ids is not None and gid not in game_ids:
+            continue
         mine = aw if color == 1 else ab if color == 0 else None
         out.append({"game_id": gid, "depth": depth, "reviewed": reviewed, "player_color": color, "accuracy": mine,
                     "opening": opening or "", "result": result or "", "white": white or "", "black": black or ""})
     return out[:limit]
 
 
-def mistakes(username: str, limit_games: int = 40, min_loss: float = 15.0) -> list:
+def mistakes(username: str, limit_games: int = 40, min_loss: float = 15.0, game_ids: set | None = None) -> list:
     """The user's own serious mistakes across their latest reviewed games, ready to be turned into practice positions."""
-    ids = [r["game_id"] for r in review_rows(username, limit_games)]
+    ids = [r["game_id"] for r in review_rows(username, limit_games, game_ids)]
     out = []
     with _conn() as c:
         for gid in ids:
@@ -138,3 +148,24 @@ def mistakes(username: str, limit_games: int = 40, min_loss: float = 15.0) -> li
                                 "explanation": m.get("explanation", ""), "opening": rev.get("opening", ""),
                                 "opponent": rev["black"] if color == 1 else rev["white"]})
     return out
+
+
+# ---- puzzle progress -------------------------------------------------------------------------------------------------------
+def save_puzzle_result(username: str, puzzle_id: str, solved: bool, attempts: int) -> None:
+    """Remember how a puzzle went. A puzzle once solved stays solved; the attempts keep adding up."""
+    if not username:
+        return
+    with _conn() as c:
+        old = c.execute("SELECT solved, attempts FROM puzzle_results WHERE username=? AND puzzle_id=?", (username.lower(), puzzle_id)).fetchone()
+        was, tries = (old[0], old[1]) if old else (0, 0)
+        c.execute("INSERT OR REPLACE INTO puzzle_results VALUES (?,?,?,?,?)",
+                  (username.lower(), puzzle_id, int(bool(was) or solved), tries + max(1, attempts), int(time.time())))
+
+
+def puzzle_results(username: str) -> dict:
+    """{puzzle_id: solved(bool)} for everything this user has tried."""
+    if not username:
+        return {}
+    with _conn() as c:
+        rows = c.execute("SELECT puzzle_id, solved FROM puzzle_results WHERE username=?", (username.lower(),)).fetchall()
+    return {pid: bool(sv) for pid, sv in rows}

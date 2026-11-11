@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 import chess
 import chess.svg
@@ -49,6 +50,13 @@ def _animate_pieces(svg: str, pairs: list, flipped: bool) -> str:
 
 def board_svg(fen: str, last_uci: str | None = None, best_uci: str | None = None, flipped: bool = False,
               badge: tuple | None = None, size: int = 520, slide: tuple | None = None, extra_arrows: list | None = None) -> str:
+    """The picture of a position (see _board_svg). Pictures are remembered, so stepping back and forth through a game costs nothing."""
+    return _board_svg(fen, last_uci, best_uci, bool(flipped), tuple(badge) if badge else None, size, tuple(slide) if slide else None,
+                      tuple((u, c) for u, c in extra_arrows) if extra_arrows else None)
+
+
+@lru_cache(maxsize=1024)
+def _board_svg(fen: str, last_uci, best_uci, flipped: bool, badge, size: int, slide, extra_arrows) -> str:
     """badge = (symbol, hex colour) drawn on the square the last move went to.
     extra_arrows = [(uci, "#rrggbbaa")]: more arrows.
     slide = (uci, backward): animate that move (forward) or its undoing (backward) when the board appears."""

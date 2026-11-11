@@ -53,8 +53,10 @@ _TOKEN = re.compile(r"([^\s{]+)(?:\{(.*?)\})?", re.S)
 
 
 class LessonTree:
-    def __init__(self, title: str, lines: list, sections: list, intro: str = ""):
+    def __init__(self, title: str, lines: list, sections: list, intro: str = "", *, slug: str = "", side: str = "white",
+                 icon: str = "♟️", blurb: str = "", level: str = "Beginner"):
         self.title, self.intro, self.sections = title, intro, sections     # sections: dicts with id/title/start (SAN path)/summary
+        self.slug, self.side, self.icon, self.blurb, self.level = slug or re.sub(r"\W+", "-", title.lower()).strip("-"), side, icon, blurb, level
         self.root = Node(epd=chess.Board().epd())
         self.by_epd: dict = {self.root.epd: self.root}
         for line in lines:
@@ -384,6 +386,8 @@ CARO_KANN_SECTIONS = [
 
 CARO_KANN = LessonTree(
     "Caro-Kann Defence", CARO_KANN_LINES, CARO_KANN_SECTIONS,
-    intro="1.e4 c6, played from Black's side. A solid, pawn-structure-driven opening: Black prepares …d5 while keeping the light-squared bishop free.")
+    intro="1.e4 c6, played from Black's side. A solid, pawn-structure-driven opening: Black prepares …d5 while keeping the light-squared bishop free.",
+    slug="caro-kann", side="black", icon="🛡️", level="Beginner",
+    blurb="Rock-solid defence to 1.e4: a healthy pawn structure and a free light-squared bishop.")
 
 LESSONS = {"caro-kann": CARO_KANN}

@@ -4,7 +4,8 @@ from __future__ import annotations
 import streamlit as st
 
 DEPTHS = {"⚡ Quick": 12, "⚖️ Standard": 14, "🔬 Deep": 18}
-DEFAULTS = {"games": None, "username": "", "rev": None, "rev_id": None, "ply": 0, "error": None}
+DEFAULTS = {"games": None, "username": "", "rev": None, "rev_id": None, "ply": 0, "error": None,
+            "depth_name": "⚖️ Standard", "n_games": 20, "remember_me": True, "bg_on": True, "remembered": False}
 
 
 def init_state() -> None:
@@ -20,3 +21,9 @@ def depth() -> int:
 def username() -> str:
     """The chess.com user whose games are loaded ('' when none)."""
     return st.session_state.get("username", "")
+
+
+def game_ids() -> set | None:
+    """The ids of the games currently loaded from chess.com (None when no games are loaded): the window the Insights page looks at."""
+    games = st.session_state.get("games")
+    return {g.game_id for g in games} if games else None

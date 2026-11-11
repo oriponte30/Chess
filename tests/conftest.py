@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault('CHESS_COACH_NO_WARMUP', '1')
+os.environ.setdefault('CHESS_COACH_NO_BACKGROUND', '1')
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))

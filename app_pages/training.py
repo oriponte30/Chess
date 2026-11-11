@@ -50,13 +50,16 @@ def reveal():
 def hub():
     st.markdown("<div class='pagehead'><h1>Training</h1><p>Practice that grows from your own games.</p></div>", unsafe_allow_html=True)
     cols = st.columns(3, gap="medium")
-    cards = [("🧩", "Chess Puzzles", "Tactics puzzles sorted by theme and difficulty, to sharpen pattern recognition.", "Coming soon", "#6c8cff"),
+    cards = [("🧩", "Chess Puzzles", "Tactics puzzles in four levels, sorted by theme, to sharpen pattern recognition.", "Live", "#6c8cff"),
              ("⚔️", "Puzzle Duels", "Race an opponent to solve the same puzzle first. Head-to-head tactics.", "Coming soon", "#e6a23c"),
              ("🎯", "Coach Practice", "Positions from your own mistakes, picked by what the Insights page says you need most.", "Live", "#7fa650")]
     for col, (icon, head, text, badge, orb) in zip(cols, cards):
         col.markdown(f"<div class='hub' style='--orb:{orb}'><div class='i'>{icon}</div><div class='h'>{head}</div><div class='x'>{text}</div>"
                      f"<span class='badge {'live' if badge == 'Live' else ''}'>{badge}</span></div>", unsafe_allow_html=True)
-        if badge == "Live":
+        if head == "Chess Puzzles":
+            if col.button("Open puzzles", key="open_puzzles", type="primary", width="stretch"):
+                st.switch_page("app_pages/puzzles.py")
+        elif badge == "Live":
             col.button("Start Coach Practice", key="open_cp", on_click=open_mode, args=("coach",), type="primary", width="stretch")
         else:
             col.button("Coming soon", key=f"soon_{head}", disabled=True, width="stretch")

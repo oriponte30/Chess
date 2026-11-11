@@ -1,21 +1,32 @@
-"""Lessons: interactive opening lessons built on a variation tree (core/lessons.py), with optional Stockfish suggestions."""
+"""Lessons: a gallery of opening lessons, each an interactive variation tree (core/lessons.py) with optional Stockfish suggestions."""
 from __future__ import annotations
 
 import chess
 import streamlit as st
 
-from core import lessons, service
+from core import lessons, library, service
 from ui import views
 from ui.board import board_svg
 from ui.chessboard import board_component
 from ui.enginelines import arrows as engine_arrows, panel_html, top_lines
 
 ss = st.session_state
-TREE = lessons.CARO_KANN
+if "lesson_slug" not in ss:
+    ss["lesson_slug"] = None                            # None = the gallery of openings
 if "lesson_path" not in ss:
     ss["lesson_path"] = []
-if "lesson_flip" not in ss:
-    ss["lesson_flip"] = True                            # the Caro-Kann is learnt from Black's side
+
+
+def open_lesson(slug: str):
+    tree = library.get(slug)
+    ss.lesson_slug, ss.lesson_path = tree.slug, []
+    ss["lesson_flip"] = tree.side == "black"            # learn it from the side you play
+    ss.pop("_lesson_shown", None)
+
+
+def close_lesson():
+    ss.lesson_slug, ss.lesson_path = None, []
+    ss.pop("_lesson_shown", None)
 
 
 # ---- state changes (all go through the path of UCI moves, so the board, the tree node and the text always agree) ---------------
@@ -38,21 +49,21 @@ def reset():
     ss.lesson_path = []
 
 
-def go_section(sid: str):
-    sec = next(s for s in TREE.sections if s["id"] == sid)
-    ss.lesson_path = TREE.node_at_san(sec["start"]).path
+def go_section(tree, sid: str):
+    sec = next(s for s in tree.sections if s["id"] == sid)
+    ss.lesson_path = tree.node_at_san(sec["start"]).path
 
 
-def forward():
-    node = TREE.effective(TREE.resolve(_board(ss.lesson_path), ss.lesson_path))
+def forward(tree):
+    node = tree.effective(tree.resolve(_board(ss.lesson_path), ss.lesson_path))
     if node is not None and node.children:
         play(node.children[0].uci)
 
 
-def to_end():
-    node = TREE.resolve(_board(ss.lesson_path), ss.lesson_path)
+def to_end(tree):
+    node = tree.resolve(_board(ss.lesson_path), ss.lesson_path)
     if node is not None:
-        tail = TREE.main_line(node, 99)
+        tail = tree.main_line(node, 99)
         if tail:
             ss.lesson_path = tail[-1].path
 
@@ -79,7 +90,7 @@ def _slide(path: list):
 
 
 @st.fragment
-def lesson():
+def lesson(TREE):
     path = ss.lesson_path
     board = _board(path)
     node = TREE.resolve(board, path)
@@ -88,11 +99,11 @@ def lesson():
     flipped = bool(ss.get("lesson_flip", True))
     show_engine = bool(ss.get("lesson_engine", False))
 
-    st.markdown(f"<div class='lesson-title'>{TREE.title}</div><div class='lesson-sub'>{TREE.intro}</div>", unsafe_allow_html=True)
-    sc = st.columns(4)
+    st.markdown(f"<div class='lesson-title'>{TREE.icon} {TREE.title}</div><div class='lesson-sub'>{TREE.intro}</div>", unsafe_allow_html=True)
+    sc = st.columns(1 + len(TREE.sections))
     sc[0].button("🏁 Start", key="sec_start", on_click=reset, width="stretch")
     for col, s in zip(sc[1:], TREE.sections):
-        col.button(f"{s['icon']} {s['title']}", key=f"sec_{s['id']}", on_click=go_section, args=(s["id"],), width="stretch",
+        col.button(f"{s['icon']} {s['title']}", key=f"sec_{s['id']}", on_click=go_section, args=(TREE, s["id"]), width="stretch",
                    type="primary" if section and section["id"] == s["id"] else "secondary")
 
     left, right = st.columns([1.15, 1], gap="large")
@@ -115,8 +126,8 @@ def lesson():
         b1.button("⏮", key="nav_first", on_click=reset, width="stretch", help="Back to the start")
         b2.button("◀", key="nav_prev", on_click=back, width="stretch", disabled=not path, help="Take back a move")
         has_next = bool(eff and eff.children)
-        b3.button("▶", key="nav_next", on_click=forward, width="stretch", disabled=not has_next, help="Play the main line")
-        b4.button("⏭", key="nav_last", on_click=to_end, width="stretch", help="Follow the main line to its end")
+        b3.button("▶", key="nav_next", on_click=forward, args=(TREE,), width="stretch", disabled=not has_next, help="Play the main line")
+        b4.button("⏭", key="nav_last", on_click=to_end, args=(TREE,), width="stretch", help="Follow the main line to its end")
         t1, t2 = st.columns(2)
         t1.toggle("Top engine moves", key="lesson_engine", help="Shows Stockfish's three best lines for this position")
         t2.toggle("Flip board", key="lesson_flip")
@@ -144,7 +155,7 @@ def lesson():
             note = (eff.note if eff else "") or ("Book move. Keep following the plan of this variation." if path else TREE.intro)
             head = node.label if path else "Start of the lesson"
             alias = "<p class='soft'>🔀 A different move order reached this same position, so the same ideas apply.</p>" if node.alias is not None else ""
-            st.markdown(f"<div class='card exp'><h4>{section['title'] if section else 'Caro-Kann'}</h4><div class='sanline'>{head}</div>"
+            st.markdown(f"<div class='card exp'><h4>{section['title'] if section else TREE.title}</h4><div class='sanline'>{head}</div>"
                         f"<p>{note}</p>{alias}</div>", unsafe_allow_html=True)
             if section and path:
                 st.markdown(f"<div class='card exp' style='margin-top:10px'><h4>Structure and plan</h4><p>{section['summary']}</p></div>", unsafe_allow_html=True)
@@ -186,8 +197,34 @@ def lesson():
                 st.info("The game is over in this position.")
 
 
-st.markdown("<div class='pagehead'><h1>Lessons</h1><p>Learn an opening move by move, with explanations, plans and Stockfish on tap.</p></div>", unsafe_allow_html=True)
-if not ss.get("engine_ok", True):
-    st.info("Stockfish isn't installed here, so the engine overlay is unavailable. The lesson itself works without it.")
-_ = views.keyboard_nav()
-_ = lesson()
+def gallery():
+    st.markdown("<div class='pagehead'><h1>Lessons</h1><p>Learn an opening move by move, with explanations, plans and Stockfish on tap. Pick one.</p></div>",
+                unsafe_allow_html=True)
+    for side, label in (("white", "Openings to play as White"), ("black", "Openings to play as Black")):
+        group = [t for t in library.LIBRARY if t.side == side]
+        if not group:
+            continue
+        st.markdown(f"<h4 class='sechead'>{label}</h4>", unsafe_allow_html=True)
+        for row in range(0, len(group), 3):
+            cols = st.columns(3, gap="medium")
+            for col, t in zip(cols, group[row:row + 3]):
+                with col:
+                    with st.container(key=f"op_{t.slug}"):
+                        st.markdown(f"<div class='opc'><div class='i'>{t.icon}</div><div class='h'>{t.title}</div>"
+                                    f"<div class='x'>{t.blurb}</div>"
+                                    f"<div class='m'><span class='chip'>{'⚪ White' if t.side == 'white' else '⚫ Black'}</span>"
+                                    f"<span class='chip'>{t.level}</span><span class='chip'>{len(t.sections)} variations</span>"
+                                    f"<span class='chip'>{t.count()} positions</span></div></div>", unsafe_allow_html=True)
+                        st.button("Open lesson", key=f"open_{t.slug}", on_click=open_lesson, args=(t.slug,), type="primary", width="stretch")
+
+
+if ss.lesson_slug is None:
+    gallery()
+else:
+    tree = library.get(ss.lesson_slug)
+    nav_l, nav_r = st.columns([1, 3], vertical_alignment="center")
+    nav_l.button("← All openings", key="lessons_back", on_click=close_lesson)
+    if not ss.get("engine_ok", True):
+        st.info("Stockfish isn't installed here, so the engine overlay is unavailable. The lesson itself works without it.")
+    _ = views.keyboard_nav()
+    _ = lesson(tree)

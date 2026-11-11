@@ -379,7 +379,7 @@ def games_list(games: list, reviewed: dict, depth: int):
         when = dt.datetime.fromtimestamp(g.end_time, dt.timezone.utc).strftime("%d %b %Y") if g.end_time else ""
         elo_me = g.white_elo if g.user_color == chess.WHITE else g.black_elo
         elo_op = g.black_elo if g.user_color == chess.WHITE else g.white_elo
-        done = reviewed.get(g.game_id) == depth
+        done = reviewed.get(g.game_id, 0) >= depth
         with cols[i % 2]:
             with st.container(key=f"gc_{g.game_id}"):
                 c1, c2 = st.columns([3.2, 1.4], vertical_alignment="center")

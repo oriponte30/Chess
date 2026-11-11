@@ -15,6 +15,7 @@ from ui import theme
 st.set_page_config(page_title="Chess Coach", page_icon="♟️", layout="wide")
 theme.inject()
 init_state()
+sidebar.boot()                                         # a returning visitor (cookie) gets their games loaded straight away
 if not st.session_state.get("_warm"):                  # launch Stockfish in the background while the page loads
     st.session_state["_warm"] = True
     service.warm_up()

@@ -78,3 +78,42 @@ def accuracy_trend(rows: list) -> list:
     """[(game number, accuracy)] oldest to newest, for the trend chart."""
     mine = [r["accuracy"] for r in reversed(rows) if r["accuracy"] is not None]
     return [(i + 1, round(a, 1)) for i, a in enumerate(mine)]
+
+
+# ---- results and openings across the loaded games -------------------------------------------------------------------------
+def outcome(row: dict) -> str:
+    """'win' / 'loss' / 'draw' for the player in one review row ('' when we can't tell which side they played)."""
+    res, color = row.get("result"), row.get("player_color")
+    if res == "1/2-1/2":
+        return "draw"
+    if color is None or res not in ("1-0", "0-1"):
+        return ""
+    return "win" if (res == "1-0") == (color == 1) else "loss"
+
+
+def _summary(rows: list) -> dict:
+    accs = [r["accuracy"] for r in rows if r.get("accuracy") is not None]
+    res = [outcome(r) for r in rows]
+    return {"games": len(rows), "wins": res.count("win"), "draws": res.count("draw"), "losses": res.count("loss"),
+            "acc": round(sum(accs) / len(accs), 1) if accs else None}
+
+
+def color_split(rows: list) -> dict:
+    """{'white': summary, 'black': summary}: how the player does with each colour."""
+    return {"white": _summary([r for r in rows if r.get("player_color") == 1]), "black": _summary([r for r in rows if r.get("player_color") == 0])}
+
+
+def opening_table(rows: list, limit: int = 6) -> list:
+    """The openings the player met most: [{opening, games, wins, draws, losses, acc, score}], most-played first. `score` is the points
+    percentage (a win is 1, a draw one half)."""
+    groups: dict = {}
+    for r in rows:
+        if r.get("opening"):
+            groups.setdefault(r["opening"], []).append(r)
+    out = []
+    for name, rs in groups.items():
+        s = _summary(rs)
+        decided = s["wins"] + s["draws"] + s["losses"]
+        out.append({"opening": name, **s, "score": round((s["wins"] + s["draws"] / 2) / decided * 100) if decided else None})
+    out.sort(key=lambda o: (-o["games"], o["opening"]))
+    return out[:limit]
